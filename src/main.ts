@@ -33,6 +33,8 @@ const runStepButton = $<HTMLButtonElement>("run-step");
 const retryStepButton = $<HTMLButtonElement>("retry-step");
 const rebootBootloaderButton = $<HTMLButtonElement>("reboot-bootloader");
 const stepHint = $<HTMLSpanElement>("step-hint");
+const skipWipeOption = $<HTMLLabelElement>("skip-wipe-option");
+const skipWipeInput = $<HTMLInputElement>("skip-wipe");
 const statusText = $<HTMLParagraphElement>("status");
 const devicePanel = $<HTMLElement>("device-panel");
 const fingerprintOutput = $<HTMLOutputElement>("fingerprint");
@@ -230,6 +232,13 @@ function renderSteps(): void {
 
 function renderActions(): void {
     const step = flow.current;
+
+    // Only the real flow sends a payload, and the choice is fixed once the
+    // unlock step has run.
+    const unlockStep = flow.steps.find((s) => s.id === "unlock");
+    skipWipeOption.hidden = flow.mode !== "unlock";
+    skipWipeInput.disabled = busy || unlockStep?.state === "done";
+    skipWipeInput.checked = flow.skipWipe;
 
     if (busy) {
         runStepButton.disabled = true;
@@ -994,6 +1003,17 @@ rebootBootloaderButton.addEventListener("click", () => {
         }
         setStatus(`Bootloader back (${flow.fastboot.serial}).`, "ok");
     });
+});
+
+skipWipeInput.addEventListener("change", () => {
+    flow.skipWipe = skipWipeInput.checked;
+    log(
+        flow.skipWipe
+            ? "skip-wipe ENABLED — the unlock will not erase userdata, misc or metadata " +
+                  "(untested on hardware)"
+            : "skip-wipe disabled — the unlock will erase userdata, misc and metadata",
+        "warn",
+    );
 });
 
 copyLogButton.addEventListener("click", () => {

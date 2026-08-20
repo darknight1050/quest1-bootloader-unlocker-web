@@ -36,7 +36,8 @@ payloads under `binaries/`, which are not the authors' to license:
 covered by the licence above. Its headers in `native/bc_min.h` are layouts
 copied from AOSP (Apache-2.0).
 
-Third-party source vendored into `src/`:
+Third-party code bundled into the built output:
 
-  * `src/vendor/lzma-d.js` — LZMA-JS by Nathan Rugg, MIT licensed. The
-    copyright notice and full MIT text are retained in the file itself.
+  * LZMA-JS by Nathan Rugg, MIT licensed, taken from npm (`lzma`). It is
+    imported normally; `vite.config.ts` only rewrites its trailing global
+    assignment so it can be loaded as an ES module.

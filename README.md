@@ -292,9 +292,41 @@ abl.img  ELF32 (EM_ARM)
 At offset `0x3777c` that image holds `c9 04 00 54` (`b.ls +0x98`), the branch
 past the signature-verification failure path. Patching it to `b6 00 00 14`
 (`b +0x2d8`) makes the jump unconditional. The payload sent to the bootloader is
-`0x100000` filler bytes of `0x0c` followed by the patched image truncated to
-`0x37780`, overrunning the fastboot command buffer so the patched copy lands
-where it will execute.
+`0x100000` filler bytes of `0x0c` followed by the patched image truncated just
+past the last patched byte, overrunning the fastboot command buffer so the
+patched copy lands where it will execute.
+
+### Unlocking without the data wipe
+
+A checkbox in the Procedure panel adds a second patch site, off by default.
+
+At `0x37a70` the bootloader runs `tst w20, #0xff` then `b.ne 0x37ab4`. When that
+branch is *not* taken it executes the block at `0x37a78-0x37ab0`, which calls one
+routine three times with the UTF-16 partition names `userdata`, `misc` and
+`metadata` — the wipe an unlock performs. The edit rewrites the branch to
+`b +0x40`: the destination it already had, made unconditional. The block's own
+success path ends at that same address (`tbz x0, #0x3f, #0x37ab4`), so the patch
+lands exactly where the code would have gone had all three calls succeeded.
+
+**Untested on hardware, and plausibly a bad idea.** On Android 10 `/data` is
+encrypted with keys bound to the verified-boot state, so changing lock state
+without wiping can leave it undecryptable — ending in a forced reset regardless.
+Static analysis cannot say whether the Quest 1 behaves that way. Try it on a
+device you can afford to reset.
+
+The payload is built when the unlock step runs, not when the firmware loads, so
+the toggle can be changed right up until then; both variants are hashed and
+logged during the load step so the choice is auditable beforehand.
+
+A patch is a list of edits (`AblPatch`), not a single one: other builds need
+several sites — the reference implementation's Quest 2 v9248600200800000 patch
+touches four. Every edit is validated before any is written, so a patch never
+lands half-applied, and the payload body is sized to reach the furthest edit.
+
+The LZMA step uses the `lzma` npm package. It ships a plain script that assigns
+its decoder to `this`, which an ES module bundler cannot import, so
+`vite.config.ts` rewrites that one line at build time and fails loudly if
+upstream ever changes it.
 
 `npm run verify` re-derives all of this from the real archive and asserts the
 extracted PE's sha256, the pre-patch bytes, the payload length and layout, and
@@ -328,7 +360,6 @@ src/lib/partitions  backup, flash, verify, restore
 src/lib/restore     standalone recovery path
 src/lib/root        ionstack
 src/lib/storage     OPFS backup sets
-src/vendor/lzma-d   vendored LZMA-JS decoder (MIT)
 ```
 
 ## Risk
@@ -349,4 +380,4 @@ MIT — see [LICENSE](LICENSE).
 That covers the source here. It does not cover what lives under `binaries/`:
 the firmware images are Meta's, and the ionstack builds belong to their author.
 `bootctl_shim` is built from `native/bootctl_shim.c` and is MIT with the rest.
-`src/vendor/lzma-d.js` is LZMA-JS by Nathan Rugg, MIT, with its notice intact.
+LZMA-JS by Nathan Rugg (npm `lzma`, MIT) is bundled into the built output.

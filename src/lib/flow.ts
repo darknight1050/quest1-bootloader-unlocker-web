@@ -9,7 +9,13 @@
 import { Adb } from "@yume-chan/adb";
 import { unzip } from "fflate";
 
-import { PATCH_16476800119700000, buildUnlockPayloadFromAbl } from "./abl.js";
+import {
+    type AblPatch,
+    applyPatch,
+    buildUnlockPayload,
+    extractLinuxLoaderPe,
+    unlockPatch,
+} from "./abl.js";
 import { fetchAsset, isSecureOrigin } from "./assets.js";
 import {
     getCurrentSlot,
@@ -77,9 +83,15 @@ export const ASSETS = {
 export const EXPECTED_ABL_SHA256 =
     "c2cc1f173bec2956fa5e068abc98db82e1cd2c651a4f4bb7ae31c79605e43707";
 
-/** sha256 of the extracted LinuxLoader image up to the patch site. */
-export const EXPECTED_PE_PREFIX_SHA256 =
-    "b85751c7d62037bad8b798a07a4ca5b0d81278836cb217af9dfa0333d72867c1";
+/**
+ * sha256 of the extracted LinuxLoader image, before patching.
+ *
+ * Checked against the whole image rather than a prefix: with patches able to
+ * touch several sites, "everything before the first edit" stops being a
+ * meaningful thing to hash.
+ */
+export const EXPECTED_PE_SHA256 =
+    "7663280938b54f8dc061b502f581cba4bea638473080c44a8dcfec88a570f74c";
 
 /**
  * `unlock` is the real procedure; `dev` is a read-only rehearsal.
@@ -294,6 +306,16 @@ export class Flow {
     gates: Gate[] = [];
     images: Map<string, Uint8Array> = new Map();
     payload: Uint8Array | undefined;
+    /** Pristine LinuxLoader image; the payload is built from it at unlock time. */
+    pe: Uint8Array | undefined;
+    /**
+     * Unlock without erasing userdata, misc and metadata.
+     *
+     * Off by default, and settable right up until the unlock step runs — which
+     * is why the payload is built when it is needed rather than pinned when the
+     * firmware is loaded.
+     */
+    skipWipe = false;
     backup: BackupSet | undefined;
     fastboot: FastbootDevice | undefined;
     unlockState: UnlockState | undefined;
@@ -401,8 +423,14 @@ export class Flow {
                     body: [
                         "This sends the CVE-2021-1931 overflow payload to the bootloader and " +
                             "then requests the unlock token.",
-                        "Unlocking sets the device to wipe user data on its next boot. That " +
-                            "is the bootloader's behaviour, not something this tool controls.",
+                        this.skipWipe
+                            ? "SKIP-WIPE IS ON: the patched bootloader will not erase " +
+                                  "userdata, misc or metadata. On Android 10 /data is " +
+                                  "encrypted against the verified-boot state, so it may still " +
+                                  "fail to mount afterwards and force a reset anyway. This is " +
+                                  "the experimental path and it has not been tested on hardware."
+                            : "Unlocking erases userdata, misc and metadata. That is the " +
+                                  "bootloader's stock behaviour; the skip-wipe toggle changes it.",
                         `To continue, type: unlock ${DOWNGRADE_TARGET}`,
                     ],
                     phrase: `unlock ${DOWNGRADE_TARGET}`,
@@ -919,19 +947,41 @@ export class Flow {
             );
         }
 
-        const { payload, pe } = await buildUnlockPayloadFromAbl(abl.slice());
-        const peHash = await sha256(pe.subarray(0, PATCH_16476800119700000.offset));
-        if (peHash !== EXPECTED_PE_PREFIX_SHA256) {
+        const pe = await extractLinuxLoaderPe(abl.slice());
+        const peHash = await sha256(pe);
+        if (peHash !== EXPECTED_PE_SHA256) {
             throw new Error(
-                `the extracted LinuxLoader image is not the one this patch was written ` +
-                    `for (prefix hashes ${peHash})`,
+                "the extracted LinuxLoader image is not the one this patch was written " +
+                    `for (hashes ${peHash}, expected ${EXPECTED_PE_SHA256})`,
             );
         }
-        this.payload = payload;
+
+        this.pe = pe;
 
         this.#log(`abl.img sha256 ${ablHash} — matches the pinned image`, "good");
-        this.#log(`LinuxLoader PE ${pe.length} bytes, patched at 0x${PATCH_16476800119700000.offset.toString(16)}`);
-        this.#log(`unlock payload ${payload.length} bytes, sha256 ${await sha256(payload)}`, "good");
+        this.#log(`LinuxLoader PE ${pe.length} bytes, sha256 verified`, "good");
+
+        // Report both variants now so the choice is auditable before it is
+        // made; the one actually sent is built when the unlock step runs.
+        for (const skipWipe of [false, true]) {
+            const { payload, patch } = this.#buildPayload(skipWipe);
+            const sites = patch.map((e) => `0x${e.offset.toString(16)}`).join(", ");
+            this.#log(
+                `${skipWipe ? "skip-wipe" : "stock"} payload: ${patch.length} site(s) at ` +
+                    `${sites}, ${payload.length} bytes, sha256 ${await sha256(payload)}`,
+            );
+        }
+    }
+
+    /** Builds the payload for a given wipe choice from the pristine image. */
+    #buildPayload(skipWipe: boolean): { payload: Uint8Array; patch: AblPatch } {
+        if (!this.pe) {
+            throw new Error("the firmware has not been loaded yet");
+        }
+        const patch = unlockPatch({ skipWipe });
+        const image = this.pe.slice();
+        applyPatch(image, patch);
+        return { payload: buildUnlockPayload(image, patch), patch };
     }
 
     /** Every payload is hash-checked against the bundled manifest. */
@@ -1417,7 +1467,19 @@ export class Flow {
         // The payload and the token request must not be separated: the patch
         // lives in the running bootloader's memory, so a reboot in between
         // would throw it away before the token is asked for.
-        const tentative = await performUnlock(device, this.payload!, {
+        const { payload, patch } = this.#buildPayload(this.skipWipe);
+        this.payload = payload;
+        this.#log(
+            this.skipWipe
+                ? "SKIP-WIPE payload: userdata, misc and metadata will be left intact"
+                : "stock payload: the bootloader will erase userdata, misc and metadata",
+            this.skipWipe ? "warn" : "info",
+        );
+        this.#log(
+            `${patch.length} patch site(s), ${payload.length} bytes, sha256 ${await sha256(payload)}`,
+        );
+
+        const tentative = await performUnlock(device, payload, {
             onLog: (line) => this.#log(line),
             onProgress: (sent, total) => this.#progress(step, "sending payload", sent, total),
         });

@@ -18,16 +18,9 @@
  * reimplements for the single build we downgrade to.
  */
 
-import lzmaModule from "../vendor/lzma-d.js";
+import lzmaModule from "lzma/src/lzma-d-min.js";
 
-interface LzmaApi {
-    decompress(
-        data: number[] | Uint8Array,
-        callback: (result: number[] | string, error: Error | null) => void,
-    ): void;
-}
-
-const LZMA = (lzmaModule as unknown as { LZMA: LzmaApi }).LZMA;
+const { LZMA } = lzmaModule;
 
 /** EFI_FIRMWARE_FILE_SYSTEM2_GUID, little-endian byte order as stored. */
 const FFS2_GUID = "8c8ce578-8a3d-4f1c-9935-896185c32dd3";
@@ -43,7 +36,8 @@ export const OVERFLOW = 0x100000;
 /** Filler byte the reference implementation uses for the overflow region. */
 export const FILLER = 0x0c;
 
-export interface AblPatch {
+/** One byte-level edit to the extracted PE32 image. */
+export interface AblEdit {
     /** Offset into the extracted PE32 image. */
     readonly offset: number;
     /** Bytes expected at that offset before patching. */
@@ -53,17 +47,77 @@ export interface AblPatch {
 }
 
 /**
- * Build 16476800119700000 (Quest 1, v29.0.0.66).
+ * A build's patch, as an ordered list of edits.
+ *
+ * Some builds need more than one site — the Quest 2 v9248600200800000 patch in
+ * the reference implementation touches four — so this is a list even where a
+ * single edit suffices. Edits are validated as a set before any of them is
+ * written, so a patch never lands half-applied.
+ */
+export type AblPatch = readonly AblEdit[];
+
+/** Offset just past the last byte any edit writes. */
+export function patchEnd(patch: AblPatch): number {
+    return patch.reduce(
+        (end, edit) => Math.max(end, edit.offset + edit.replace.length),
+        0,
+    );
+}
+
+/**
+ * Build 16476800119700000 (Quest 1, v29.0.0.66) — the verification bypass.
  *
  * `c9 04 00 54` is `b.ls +0x98`, the branch that skips past the failure path
  * when verification succeeds. Replacing it with `b6 00 00 14` (`b +0x2d8`)
  * makes that jump unconditional, so verification never fails.
+ *
+ * This is the patch the unlock needs; everything else is optional.
  */
-export const PATCH_16476800119700000: AblPatch = {
-    offset: 0x3777c,
-    expect: [0xc9, 0x04, 0x00, 0x54],
-    replace: [0xb6, 0x00, 0x00, 0x14],
+export const PATCH_16476800119700000: AblPatch = [
+    {
+        offset: 0x3777c,
+        expect: [0xc9, 0x04, 0x00, 0x54],
+        replace: [0xb6, 0x00, 0x00, 0x14],
+    },
+];
+
+/**
+ * Optional edit: unlock without erasing user data.
+ *
+ * At 0x37a70 the bootloader does `tst w20, #0xff` and, at 0x37a74,
+ * `b.ne 0x37ab4`. When that branch is *not* taken it runs the block at
+ * 0x37a78-0x37ab0, which calls the same routine three times with the UTF-16
+ * partition names "userdata", "misc" and "metadata" — the wipe an unlock
+ * performs.
+ *
+ * `10 00 00 14` is `b +0x40`: the branch's own destination, made
+ * unconditional. The block's success path already ends at that same address
+ * (`tbz x0, #0x3f, #0x37ab4` at 0x37aa4), so this lands exactly where the code
+ * would have gone had all three calls succeeded — the wipe is skipped and the
+ * surrounding control flow is untouched.
+ *
+ * Not enabled by default. On Android 10 `/data` is encrypted with keys bound
+ * to the verified-boot state, so changing lock state without wiping can leave
+ * `/data` undecryptable — which ends in a forced reset anyway. Whether the
+ * Quest 1 behaves that way is not something static analysis can answer.
+ */
+export const SKIP_WIPE_16476800119700000: AblEdit = {
+    offset: 0x37a74,
+    expect: [0x01, 0x02, 0x00, 0x54],
+    replace: [0x10, 0x00, 0x00, 0x14],
 };
+
+export interface UnlockPatchOptions {
+    /** Leave userdata, misc and metadata intact. Default false. */
+    readonly skipWipe?: boolean;
+}
+
+/** The patch to apply, given what the user asked for. */
+export function unlockPatch({ skipWipe = false }: UnlockPatchOptions = {}): AblPatch {
+    return skipWipe
+        ? [...PATCH_16476800119700000, SKIP_WIPE_16476800119700000]
+        : PATCH_16476800119700000;
+}
 
 function u16(d: Uint8Array, o: number): number {
     return d[o]! | (d[o + 1]! << 8);
@@ -271,27 +325,52 @@ export async function extractLinuxLoaderPe(abl: Uint8Array): Promise<Uint8Array>
     return pe.data;
 }
 
-/** Applies a patch in place after checking the bytes are what we expect. */
+const hex = (bytes: Iterable<number>) =>
+    Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join(" ");
+
+/**
+ * Applies every edit in place, after checking all of them.
+ *
+ * Validation is a separate pass on purpose: writing edit 1 and then finding
+ * edit 2 does not match would leave a half-patched image that still looks
+ * usable. Nothing is written unless the whole patch fits the image.
+ */
 export function applyPatch(pe: Uint8Array, patch: AblPatch): void {
-    const { offset, expect, replace } = patch;
-    if (offset + expect.length > pe.length) {
-        throw new Error(
-            `patch offset ${offset.toString(16)} is past the end of the image`,
-        );
+    if (patch.length === 0) {
+        throw new Error("patch contains no edits");
     }
-    for (let i = 0; i < expect.length; i++) {
-        if (pe[offset + i] !== expect[i]) {
-            const got = Array.from(pe.subarray(offset, offset + expect.length))
-                .map((b) => b.toString(16).padStart(2, "0"))
-                .join(" ");
-            const want = expect.map((b) => b.toString(16).padStart(2, "0")).join(" ");
-            throw new Error(
-                `unexpected bytes at 0x${offset.toString(16)}: got ${got}, expected ${want}. ` +
-                    "This abl.img is not the build this patch was written for.",
+
+    const problems: string[] = [];
+    for (const { offset, expect } of patch) {
+        if (offset + expect.length > pe.length) {
+            problems.push(
+                `offset 0x${offset.toString(16)} runs past the end of the ${pe.length}-byte image`,
             );
+            continue;
+        }
+        const actual = pe.subarray(offset, offset + expect.length);
+        for (let i = 0; i < expect.length; i++) {
+            if (actual[i] !== expect[i]) {
+                problems.push(
+                    `at 0x${offset.toString(16)}: got ${hex(actual)}, expected ${hex(expect)}`,
+                );
+                break;
+            }
         }
     }
-    pe.set(replace, offset);
+
+    if (problems.length > 0) {
+        throw new Error(
+            `this abl.img is not the build these patches were written for — nothing was ` +
+                `applied:\n  ${problems.join("\n  ")}`,
+        );
+    }
+
+    for (const { offset, replace } of patch) {
+        pe.set(replace, offset);
+    }
 }
 
 /**
@@ -302,7 +381,7 @@ export function applyPatch(pe: Uint8Array, patch: AblPatch): void {
  * much lands the patched copy where the bootloader will execute it.
  */
 export function buildUnlockPayload(patchedPe: Uint8Array, patch: AblPatch): Uint8Array {
-    const end = patch.offset + patch.replace.length;
+    const end = patchEnd(patch);
     const payload = new Uint8Array(OVERFLOW + end).fill(FILLER);
     payload.set(patchedPe.subarray(0, end), OVERFLOW);
     return payload;

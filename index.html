@@ -61,6 +61,19 @@
       <section class="panel">
         <h2>Procedure</h2>
         <ol id="steps" class="steps"></ol>
+        <label class="option" id="skip-wipe-option">
+          <input id="skip-wipe" type="checkbox" />
+          <span>
+            <strong>Unlock without erasing user data</strong>
+            <em>
+              Adds a second patch site that skips the bootloader's
+              <code>userdata</code>/<code>misc</code>/<code>metadata</code> wipe.
+              Untested on hardware — <code>/data</code> is encrypted against the
+              verified-boot state and may still fail to mount, forcing a reset
+              anyway.
+            </em>
+          </span>
+        </label>
         <div class="row step-actions">
           <button id="run-step" type="button" disabled>Run next step</button>
           <button id="retry-step" type="button" class="ghost" hidden>
