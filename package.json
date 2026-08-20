@@ -20,7 +20,7 @@
     "ionstack"
   ],
   "license": "MIT",
-  "author": "",
+  "author": "darknight1050",
   "type": "module",
   "scripts": {
     "dev": "node scripts/sync-assets.mjs --with-dev && vite",

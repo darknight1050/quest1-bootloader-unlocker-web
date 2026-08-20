@@ -341,3 +341,12 @@ damaged.
 Keeping the other slot intact is the safety net that matters — the backup only
 helps while the device still boots something, because restoring it requires an
 adb shell. If both slots are gone, so are you.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE).
+
+That covers the source here. It does not cover what lives under `binaries/`:
+the firmware images are Meta's, and the ionstack builds belong to their author.
+`bootctl_shim` is built from `native/bootctl_shim.c` and is MIT with the rest.
+`src/vendor/lzma-d.js` is LZMA-JS by Nathan Rugg, MIT, with its notice intact.

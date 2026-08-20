@@ -1,0 +1,42 @@
+MIT License
+
+Copyright (c) 2026 darknight1050
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+The licence above covers the source in this repository. It does not cover the
+payloads under `binaries/`, which are not the authors' to license:
+
+  * `16476800119700000.zip` — partition images from Meta's Quest 1 firmware.
+    Proprietary to Meta Platforms, Inc. Redistributed here only so the tool can
+    write them back to the device they came from.
+  * `ionstack`, `dev/ionstack-quest3` — third-party kernel exploit binaries,
+    included with their author's permission and under whatever terms that
+    author sets.
+
+`bootctl_shim` is built from `native/bootctl_shim.c` in this repository and is
+covered by the licence above. Its headers in `native/bc_min.h` are layouts
+copied from AOSP (Apache-2.0).
+
+Third-party source vendored into `src/`:
+
+  * `src/vendor/lzma-d.js` — LZMA-JS by Nathan Rugg, MIT licensed. The
+    copyright notice and full MIT text are retained in the file itself.
