@@ -1,5 +1,5 @@
 {
-  "name": "quest1_bootlader-unlocker-web",
+  "name": "quest1-bootlader-unlocker-web",
   "version": "1.0.0",
   "private": true,
   "description": "Downgrades a Meta Quest 1 inactive boot slot to firmware 16476800119700000 and unlocks the bootloader via CVE-2021-1931, entirely from a Chromium browser over WebUSB.",
