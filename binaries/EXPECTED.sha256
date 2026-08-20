@@ -1,0 +1,8 @@
+# Known-good hashes of everything this tool pushes or flashes.
+# scripts/sync-assets.mjs refuses to run if a file under binaries/ does not
+# match, so a payload cannot change without someone updating this file on
+# purpose. Regenerate deliberately with: npm run hash-assets
+5e4d6f70f4287134e7cb1016625bcc551fd23852702d81d56156137c26335f6f  16476800119700000.zip
+ecd366ceefc0bafd0ce8c35a9832ffcc425d2e80f915ccae0e8b48b881977056  ionstack
+a5a5a201c5d4318015b1f646729a5ec3ab8eee3bc2b856f46ed6ea887d225fcf  bootctl_shim
+db287458d4279c9c5084ad016103c1348c927dfd45615f3c46f8d577e657e14d  dev/ionstack-quest3

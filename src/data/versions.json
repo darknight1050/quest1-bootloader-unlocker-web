@@ -1,0 +1,454 @@
+{
+  "$comment": "Generated from E:/quest_firmware_archive/Quest/manifest.json. Order verified: numeric order of .incremental matches build_date order for all entries.",
+  "device": {
+    "model": "Quest",
+    "codename": "monterey",
+    "product": "vr_monterey"
+  },
+  "downgradeTarget": "16476800119700000",
+  "rootSupported": [
+    "49845030443200410"
+  ],
+  "builds": [
+    {
+      "incremental": "2565500068100000",
+      "version": "3.60.71.150513939",
+      "buildDate": "Fri Jun 14 19:01:58 PDT 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/256550.6810.0:user/release-keys",
+      "archive": "q1_2565500068100000.zip",
+      "sha256": "e341fc051d93806af9f9de6dabb3738d5685aa69ea62636e90f6f90284784475"
+    },
+    {
+      "incremental": "3337000026800000",
+      "version": "7.0.0.32.358.163419639",
+      "buildDate": "Fri Jul 19 18:54:21 PDT 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/333700.2680.0:user/release-keys",
+      "archive": "q1_3337000026800000.zip",
+      "sha256": "26f7e0a8e640b06727d986bb9b1ae5fb7b0c8bb98d7c307113497496e0190552"
+    },
+    {
+      "incremental": "3337000037800000",
+      "version": "7.0.0.32.358.163419639",
+      "buildDate": "Wed Jul 31 12:17:51 PDT 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/333700.3780.0:user/release-keys",
+      "archive": "q1_3337000037800000.zip",
+      "sha256": "364ddf34685d7472c9a9d66f225aaaa3f771abd34a8b684f3f0be3d9d955668f"
+    },
+    {
+      "incremental": "3585700060900000",
+      "version": "8.0.0.135.626.168186885",
+      "buildDate": "Mon Aug 19 17:30:09 PDT 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/358570.6090.0:user/release-keys",
+      "archive": "q1_3585700060900000.zip",
+      "sha256": "baa1a8a530763e0d7bb2827fc4e8dd00c68fae5b0821b32f126a98ae78897f40"
+    },
+    {
+      "incremental": "3585700093200000",
+      "version": "8.0.0.148.626.171385523",
+      "buildDate": "Sat Sep 7 06:12:08 PDT 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/358570.9320.0:user/release-keys",
+      "archive": "q1_3585700093200000.zip",
+      "sha256": "04908ed0a13d13a2719417af27fc4143ac4a2a3658c75d7b4fea4c597d101564"
+    },
+    {
+      "incremental": "3774800165000000",
+      "version": "9.0.0.168.450.174044450",
+      "buildDate": "Mon Sep 30 14:08:19 PDT 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/377480.16500.0:user/release-keys",
+      "archive": "q1_3774800165000000.zip",
+      "sha256": "eb902f3feaf1f44a66cb95cb41d8ec638f22a57fdec55831f70bdd250c299eb0"
+    },
+    {
+      "incremental": "3965200061700000",
+      "version": "10.0.0.143.427.178455608",
+      "buildDate": "Thu Oct 17 23:09:23 PDT 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/396520.6170.0:user/release-keys",
+      "archive": "q1_3965200061700000.zip",
+      "sha256": "ed16ba71b52e3ba65279024da375cc311cc770ee5fd7453366713f296c4be45d"
+    },
+    {
+      "incremental": "3965200061700115",
+      "version": "10.1.0.144.427.179270078",
+      "buildDate": "Tue Oct 22 18:09:50 PDT 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/396520.6170.115:user/release-keys",
+      "archive": "q1_3965200061700115.zip",
+      "sha256": "53a107980c006b692331fd8bcddf26afdd6f0804d1e8a82a6037687189946ea0"
+    },
+    {
+      "incremental": "4156300046500000",
+      "version": "11.0.0.150.458.182046557",
+      "buildDate": "Thu Nov 7 18:10:10 PST 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/415630.4650.0:user/release-keys",
+      "archive": "q1_4156300046500000.zip",
+      "sha256": "0b92ebee221923ddfb71343f777832e5e1cd5c519dbbd2d842ff7af62f65a1a3"
+    },
+    {
+      "incremental": "4156300058600000",
+      "version": "11.0.0.179.458.183074809",
+      "buildDate": "Wed Nov 13 18:10:23 PST 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/415630.5860.0:user/release-keys",
+      "archive": "q1_4156300058600000.zip",
+      "sha256": "851b427a41bf89b0749584d52ae1764db6949bc8f9c737d3454622342e2b3998"
+    },
+    {
+      "incremental": "4156300067000000",
+      "version": "11.0.0.180.458.183116345",
+      "buildDate": "Sun Nov 17 18:10:05 PST 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/415630.6700.0:user/release-keys",
+      "archive": "q1_4156300067000000.zip",
+      "sha256": "a0c14330d35a99d80e9b1ce860a8e667964bed5f0195b311a24d3ca2eb19658f"
+    },
+    {
+      "incremental": "4342600050300000",
+      "version": "12.0.0.190.469.187244423",
+      "buildDate": "Sat Dec 7 18:07:54 PST 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/434260.5030.0:user/release-keys",
+      "archive": "q1_4342600050300000.zip",
+      "sha256": "1733ce78430aeacd9e0d2489659ad0e927d1ac07795b597601d0bd89d92fd0f3"
+    },
+    {
+      "incremental": "4342600057100000",
+      "version": "12.0.0.226.469.188362039",
+      "buildDate": "Fri Dec 13 19:57:01 PST 2019",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/434260.5710.0:user/release-keys",
+      "archive": "q1_4342600057100000.zip",
+      "sha256": "f134b974593b4e5018fdf7cdca58187b468c898be854339c646fe573bb2c5b60"
+    },
+    {
+      "incremental": "4566800260600000",
+      "version": "13.0.0.298.463.195755071",
+      "buildDate": "Fri Jan 31 14:30:35 PST 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/456680.26060.0:user/release-keys",
+      "archive": "q1_4566800260600000.zip",
+      "sha256": "7e24f091ed33bee17ef9253ee40730bc29897991115e89dabaa17e1ac8884ad1"
+    },
+    {
+      "incremental": "5072400209400000",
+      "version": "14.0.0.143.709.199909111",
+      "buildDate": "Sun Feb 23 21:11:06 PST 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/507240.20940.0:user/release-keys",
+      "archive": "q1_5072400209400000.zip",
+      "sha256": "78f3f318f01dd93d4c91c5c4fcb19cf2c88e6e439ae7d0dd654be35a8a42e672"
+    },
+    {
+      "incremental": "5551800225700000",
+      "version": "15.0.0.200.456.205956078",
+      "buildDate": "Fri Mar 27 16:26:01 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/555180.22570.0:user/release-keys",
+      "archive": "q1_5551800225700000.zip",
+      "sha256": "d12db70ebcdb073bb5754f045310d69735c2f3bf5ce594fb837900178774a99d"
+    },
+    {
+      "incremental": "6023800208800000",
+      "version": "16.0.0.121.450.209849436",
+      "buildDate": "Sat Apr 18 00:30:46 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/602380.20880.0:user/release-keys",
+      "archive": "q1_6023800208800000.zip",
+      "sha256": "7e2f968b65e225e15dd792639f53b09f15a1161749e2e8924081fa0665c0b791"
+    },
+    {
+      "incremental": "6023800249000000",
+      "version": "16.0.0.138.450.210938897",
+      "buildDate": "Fri Apr 24 18:54:15 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/602380.24900.0:user/release-keys",
+      "archive": "q1_6023800249000000.zip",
+      "sha256": "2cdc9ccb31b13696df73016f346cbd58bb5d1f9cc75e538d4563db66debee8a3"
+    },
+    {
+      "incremental": "6551400170600000",
+      "version": "17.0.0.167.462.214483563",
+      "buildDate": "Wed May 13 18:35:05 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/655140.17060.0:user/release-keys",
+      "archive": "q1_6551400170600000.zip",
+      "sha256": "677bcd44bffa4e8294e68eb8e1be6ecf75d6cb4db25bca78e33ce29cd87affbd"
+    },
+    {
+      "incremental": "6551400235200000",
+      "version": "17.0.0.244.462.216761196",
+      "buildDate": "Fri Jun 5 23:22:41 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/655140.23520.0:user/release-keys",
+      "archive": "q1_6551400235200000.zip",
+      "sha256": "20c740fdce3d7549acc1e0e1732d22425a36542bfa80a2a0dcd02e132502363f"
+    },
+    {
+      "incremental": "7386600268600000",
+      "version": "18.0.0.403.517.224382743",
+      "buildDate": "Mon Jun 22 12:01:57 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/738660.26860.0:user/release-keys",
+      "archive": "q1_7386600268600000.zip",
+      "sha256": "7ed738976bcf00d3bc7dc3ded09f37cde6ee9a9eb1fd1ccb43e8dee4ecdd9f6d"
+    },
+    {
+      "incremental": "8214900132100000",
+      "version": "19.0.0.341.531.231192323",
+      "buildDate": "Tue Jul 14 06:45:17 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/821490.13210.0:user/release-keys",
+      "archive": "q1_8214900132100000.zip",
+      "sha256": "0328557ff26533256fd0b38ba9390dbe7c9c944a6a20569c49b0f4597ca62c48"
+    },
+    {
+      "incremental": "9041200131500000",
+      "version": "20.0.0.350.509.239781891",
+      "buildDate": "Wed Aug 19 10:41:18 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/904120.13150.0:user/release-keys",
+      "archive": "q1_9041200131500000.zip",
+      "sha256": "a0d3988609de708190e1e9d6bbfc79d9430a92094b3a76f7f12d616ec111d74c"
+    },
+    {
+      "incremental": "9041200171800000",
+      "version": "20.0.0.431.509.242741616",
+      "buildDate": "Wed Sep 9 12:37:42 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/904120.17180.0:user/release-keys",
+      "archive": "q1_9041200171800000.zip",
+      "sha256": "c4bb9a462352638b226639194803adcd4d090f5dac103413cfb9ca1d6364ed31"
+    },
+    {
+      "incremental": "9041200197600000",
+      "version": "20.0.0.454.509.247160405",
+      "buildDate": "Mon Sep 28 16:36:15 PDT 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/904120.19760.0:user/release-keys",
+      "archive": "q1_9041200197600000.zip",
+      "sha256": "cb888cd455ec496af541fffee5fa55b2c30edbebbfdaf69cc3520dd10e88ee44"
+    },
+    {
+      "incremental": "12018300092100000",
+      "version": "23.0.0.86.517.259862823",
+      "buildDate": "Mon Nov 30 19:40:35 PST 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/1201830.9210.0:user/release-keys",
+      "archive": "q1_12018300092100000.zip",
+      "sha256": "ece34d1970f73fd6d7463e70ac797ef0eebcf5f121835b731d05caa14986c378"
+    },
+    {
+      "incremental": "12018300093600000",
+      "version": "23.0.0.87.517.260511599",
+      "buildDate": "Fri Dec 4 19:57:27 PST 2020",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/1201830.9360.0:user/release-keys",
+      "archive": "q1_12018300093600000.zip",
+      "sha256": "ca5827eac9be2ad4db28e482cb3e8cfdb8b85b320eddeb49abd906e16fa74582"
+    },
+    {
+      "incremental": "13969400114100000",
+      "version": "25.0.0.77.658.272706513",
+      "buildDate": "Sat Feb 13 20:12:51 PST 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/1396940.11410.0:user/release-keys",
+      "archive": "q1_13969400114100000.zip",
+      "sha256": "c2b1e18d2f4ad039871bb9cb26a6fd091a3a274ce82c80f030d83c81810cd80c"
+    },
+    {
+      "incremental": "13969400130600000",
+      "version": "25.0.0.77.658.272706513",
+      "buildDate": "Tue Mar 2 00:03:43 PST 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:7.1.1/NGI77B/1396940.13060.0:user/release-keys",
+      "archive": "q1_13969400130600000.zip",
+      "sha256": "6dee58d9e9a0a21ab2b1a82298d0521d022716b6501f8441afaa1f2c8f75f1f5"
+    },
+    {
+      "incremental": "15849800125100000",
+      "version": "28.0.0.221.359.284529906",
+      "buildDate": "Fri Apr 16 02:50:31 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/15849800125100000:user/release-keys",
+      "archive": "q1_15849800125100000.zip",
+      "sha256": "a32453d90a41e7c395e89958efed1c3afee1fb946269337457b22dcd3f516fc3"
+    },
+    {
+      "incremental": "15849800145900000",
+      "version": "28.0.0.221.359.284529906",
+      "buildDate": "Wed Apr 21 17:53:29 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/15849800145900000:user/release-keys",
+      "archive": "q1_15849800145900000.zip",
+      "sha256": "72f9d6f65ec33ea48c75ccc9819b1b0d7a3f4269ca4910f543060008c807cc55"
+    },
+    {
+      "incremental": "16476800119700000",
+      "version": "29.0.0.66.370.290246252",
+      "buildDate": "Mon May 10 00:25:46 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/16476800119700000:user/release-keys",
+      "archive": "q1_16476800119700000.zip",
+      "sha256": "af83e76795925f57d21f1b24eb7c4dafc22666e0ebcfff2c9e70f8574b45abc0"
+    },
+    {
+      "incremental": "17007100171000000",
+      "version": "30.0.0.50.350.297767417",
+      "buildDate": "Fri Jun 11 04:26:21 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/17007100171000000:user/release-keys",
+      "archive": "q1_17007100171000000.zip",
+      "sha256": "348815893056405e951450feae7c8bea5b0fe19ee901dd87abb50557a157a04d"
+    },
+    {
+      "incremental": "17007100222700000",
+      "version": "30.1.0.61.350.300158191",
+      "buildDate": "Mon Jun 21 22:19:26 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/17007100222700000:user/release-keys",
+      "archive": "q1_17007100222700000.zip",
+      "sha256": "86655c395edd3a98f9a992abfcfbe5c680c59a3858e3cc0713800a5a80bb2b0b"
+    },
+    {
+      "incremental": "17692500170700000",
+      "version": "31.0.0.82.370.305659284",
+      "buildDate": "Mon Jul 19 22:22:23 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/17692500170700000:user/release-keys",
+      "archive": "q1_17692500170700000.zip",
+      "sha256": "e17a36d8876a8432de2867635f0cf64658e642dffd629582c7ea3fb56453a0f7"
+    },
+    {
+      "incremental": "17692500215900000",
+      "version": "31.1.0.94.370.307551889",
+      "buildDate": "Thu Jul 29 11:17:22 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/17692500215900000:user/release-keys",
+      "archive": "q1_17692500215900000.zip",
+      "sha256": "391b816af7e9e83595c65f6356c081a9095e301151bb133f5329b5f0cb16ff3a"
+    },
+    {
+      "incremental": "17692500235000000",
+      "version": "31.1.0.102.370.308659911",
+      "buildDate": "Mon Aug 2 22:27:23 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/17692500235000000:user/release-keys",
+      "archive": "q1_17692500235000000.zip",
+      "sha256": "2fb1ed1a6933e442f4a34bdf45d9535e72527cb345d90fcbd2423d5fb45f4796"
+    },
+    {
+      "incremental": "18371800151300000",
+      "version": "32.0.0.58.353.311069636",
+      "buildDate": "Sat Aug 14 08:25:33 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/18371800151300000:user/release-keys",
+      "archive": "q1_18371800151300000.zip",
+      "sha256": "35257dd57337d56aaa3b8ac8d6917b858739c30b6a358f9ced33715dd16ffbd8"
+    },
+    {
+      "incremental": "18371800230900000",
+      "version": "32.0.0.77.353.315194031",
+      "buildDate": "Wed Sep 1 19:43:22 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/18371800230900000:user/release-keys",
+      "archive": "q1_18371800230900000.zip",
+      "sha256": "8040b361a56c6fd34a7315267f406a3c15c4068c2b42f281796db03ea79a0b30"
+    },
+    {
+      "incremental": "19130100108400000",
+      "version": "33.0.0.46.367.316373824",
+      "buildDate": "Tue Sep 7 04:26:12 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/19130100108400000:user/release-keys",
+      "archive": "q1_19130100108400000.zip",
+      "sha256": "87c293368460a6375066c149bee7ab1a1fed5e700fddbc654ce9c8af505532ff"
+    },
+    {
+      "incremental": "19130100171400000",
+      "version": "33.0.0.61.367.319270481",
+      "buildDate": "Mon Sep 20 18:20:26 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/19130100171400000:user/release-keys",
+      "archive": "q1_19130100171400000.zip",
+      "sha256": "294d5ea473d6e58c888b5775da2ea6dcb13a242e713281120cab596972197c2c"
+    },
+    {
+      "incremental": "19130100198300000",
+      "version": "33.0.0.69.367.320877141",
+      "buildDate": "Mon Sep 27 00:25:56 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/19130100198300000:user/release-keys",
+      "archive": "q1_19130100198300000.zip",
+      "sha256": "482aae893b4cf88711ed98088f002ec1cad0191a5eab875963e9fd76d0ce1668"
+    },
+    {
+      "incremental": "19130100301000000",
+      "version": "33.0.0.95.367.328040843",
+      "buildDate": "Mon Oct 25 22:57:35 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/19130100301000000:user/release-keys",
+      "archive": "q1_19130100301000000.zip",
+      "sha256": "69df4ba86dc99338351c3339252170cdf43c47c15071851b02b83f94bd09dd4d"
+    },
+    {
+      "incremental": "20169900218100000",
+      "version": "34.0.0.92.366.329012939",
+      "buildDate": "Fri Oct 29 18:42:00 PDT 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/20169900218100000:user/release-keys",
+      "archive": "q1_20169900218100000.zip",
+      "sha256": "547424171630b48712ee42f38a8b050df1f66072abb5dc85452d619394e939b4"
+    },
+    {
+      "incremental": "21985310243700000",
+      "version": "35.0.0.117.341.334653283",
+      "buildDate": "Wed Nov 24 04:29:43 PST 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/21985310243700000:user/release-keys",
+      "archive": "q1_21985310243700000.zip",
+      "sha256": "5ff3494b33df6a52a6e33bc81f2c3a01abbb3ee43e00a18f4b818e3886454c00"
+    },
+    {
+      "incremental": "21985310424700000",
+      "version": "35.0.0.140.341.339080983",
+      "buildDate": "Wed Dec 15 04:31:35 PST 2021",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/21985310424700000:user/release-keys",
+      "archive": "q1_21985310424700000.zip",
+      "sha256": "fd6fdae755acc27471a8aa90a573aa963a2a835b574d6d5656b74f8600d50059"
+    },
+    {
+      "incremental": "22310100490800000",
+      "version": "37.0.0.135.109.344258447",
+      "buildDate": "Tue Jan 11 20:32:07 PST 2022",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/22310100490800000:user/release-keys",
+      "archive": "q1_22310100490800000.zip",
+      "sha256": "96950ce6c32e8f712214850cd284b94c2146434cab4f05347bbc7578fb3ada12"
+    },
+    {
+      "incremental": "28467500771700000",
+      "version": "40.0.0.106.259.370694197",
+      "buildDate": "Thu May 19 02:36:55 PDT 2022",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/28467500771700000:user/release-keys",
+      "archive": "q1_28467500771700000.zip",
+      "sha256": "3f4cabd7e6fa515b5e5012ab62c942617c8cd58e6f1338a793117a8fb9ac3d7c"
+    },
+    {
+      "incremental": "37314400805600000",
+      "version": "43.0.0.178.120.389405224",
+      "buildDate": "Wed Aug 10 20:53:32 PDT 2022",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/37314400805600000:user/release-keys",
+      "archive": "q1_37314400805600000.zip",
+      "sha256": "8db12193c0c6eba6072a83091ebd6c7cefc7086344f9cabb981397e363e6ed4b"
+    },
+    {
+      "incremental": "47421700667500000",
+      "version": "46.0.0.226.0.406523063",
+      "buildDate": "Thu Oct 6 19:38:25 PDT 2022",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/47421700667500000:user/release-keys",
+      "archive": "q1_47421700667500000.zip",
+      "sha256": "7e84bd8598c594779e06dad77f7632c2569e5c745394d2a31bc52664eac44b9e"
+    },
+    {
+      "incremental": "49068160374000400",
+      "version": "47.0.0.274.341.426536122",
+      "buildDate": "Tue Dec 6 16:56:24 PST 2022",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/49068160374000400:user/release-keys",
+      "archive": "q1_49068160374000400.zip",
+      "sha256": "1e996181865aeb67703236e7e7c40754fe6ddb5a7a5fa91d1d98449771ff10d0"
+    },
+    {
+      "incremental": "49713390192800400",
+      "version": "49.0.0.187.357.440318559",
+      "buildDate": "Mon Jan 23 04:44:20 PST 2023",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/49713390192800400:user/release-keys",
+      "archive": "q1_49713390192800400.zip",
+      "sha256": "5ceb49b0807baf43feee0da08dd6b253cbc6fc0e92fcf751af1370b6afe041ba"
+    },
+    {
+      "incremental": "49845030259200400",
+      "version": "50.0.0.195.257.454885341",
+      "buildDate": "Fri Mar 10 08:45:59 PST 2023",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/49845030259200400:user/release-keys",
+      "archive": "q1_49845030259200400.zip",
+      "sha256": "3b946578ca2e7129c1c1a7e30698db6f4ecf78ae8bacb95e87d1b30e57930efd"
+    },
+    {
+      "incremental": "49845030369000410",
+      "version": "50.0.0.198.257.455910822",
+      "buildDate": "Wed Dec 6 02:07:37 PST 2023",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/49845030369000410:user/release-keys",
+      "archive": "q1_49845030369000410.zip",
+      "sha256": "cd3f5828cebee8da7a4e5dedebb62d0c769db007171c28067411218e33ff1701"
+    },
+    {
+      "incremental": "49845030443200410",
+      "version": "50.0.0.198.257.455910822",
+      "buildDate": "Wed Jul 31 02:02:22 PDT 2024",
+      "fingerprint": "oculus/vr_monterey/monterey:10/QQ3A.200805.001/49845030443200410:user/release-keys",
+      "archive": "q1_49845030443200410.zip",
+      "sha256": "7c1f75ecd807b59d5215a67ff69e8e8c6da4b966eb08464d48e00d2d5a8b6aaa"
+    }
+  ]
+}

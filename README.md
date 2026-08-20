@@ -162,7 +162,13 @@ when it is not on a secure origin.
 Only available when Vite is serving locally: `import.meta.env.DEV` gates it, the
 toggle is removed from a production build, `?dev=1` is ignored there, `Flow`
 throws if constructed in dev mode, and `sync-assets` leaves the dev payloads out
-of `dist` entirely so they are not even in the manifest.
+of `dist` entirely.
+
+`binaries/dev/` is gitignored, so a fresh clone will not have it. That is not an
+error: `sync-assets` warns and carries on, the core flow is unaffected, and only
+dev mode for that device is unavailable. The hash stays pinned in
+`binaries/EXPECTED.sha256` and in the bundled manifest either way, so a payload
+someone does supply is still checked against the expected one.
 
 It exists to exercise the parts that do not need a Quest 1 — ionstack, the
 backup round-trip, and the fastboot lock-state read — on other hardware:
@@ -308,7 +314,8 @@ that a wrong build is rejected.
 ## Layout
 
 ```
-binaries/           firmware archive + ionstack + bootctl_shim (also copied to public/)
+binaries/           firmware archive + ionstack + bootctl_shim (mirrored into public/)
+binaries/dev/       dev-only payloads — gitignored, absent from a fresh clone
 native/             bootctl_shim.c and its trimmed AOSP headers
 scripts/verify-abl  payload derivation checked against the real firmware
 src/data/           versions.json, generated from the firmware archive manifest

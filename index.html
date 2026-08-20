@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quest 1 Bootloader Unlocker</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Quest&nbsp;1 Bootloader Unlocker</h1>
+        <p class="sub">
+          Downgrades the inactive slot to
+          <code>16476800119700000</code>, boots it, and unlocks the bootloader
+          through CVE-2021-1931. Quest&nbsp;1 only.
+        </p>
+      </header>
+
+      <section class="panel">
+        <div class="row">
+          <button id="connect" type="button">Connect headset (ADB)</button>
+          <button id="connect-fastboot" type="button" class="ghost">
+            Connect bootloader (fastboot)
+          </button>
+          <button id="disconnect" type="button" class="ghost" disabled>
+            Disconnect
+          </button>
+          <label class="check" title="Read-only rehearsal on non-Quest-1 hardware">
+            <input id="dev-mode" type="checkbox" />
+            Dev mode
+          </label>
+        </div>
+        <div id="dev-banner" class="dev-banner" hidden>
+          <p>
+            <strong>Dev mode.</strong> Read-only rehearsal: ionstack, the backup
+            round-trip, and the fastboot lock-state read. No partition is
+            written, no slot is switched, no bootloader is unlocked.
+          </p>
+          <label class="dev-cap">
+            Back up partitions up to
+            <input id="dev-cap" type="number" min="1" max="4096" step="1" value="256" />
+            MiB
+            <span class="hint">
+              keeps a multi-GB <code>super</code> out; 256 covers
+              <code>boot</code>, <code>recovery</code> and
+              <code>vendor_boot</code>
+            </span>
+          </label>
+        </div>
+        <p id="status" class="status idle">Checking WebUSB support…</p>
+      </section>
+
+      <section class="panel" id="device-panel" hidden>
+        <h2>Device</h2>
+        <output id="fingerprint" class="fingerprint">—</output>
+        <table id="props"><tbody></tbody></table>
+        <ul id="gates" class="gates"></ul>
+      </section>
+
+      <section class="panel">
+        <h2>Procedure</h2>
+        <ol id="steps" class="steps"></ol>
+        <div class="row step-actions">
+          <button id="run-step" type="button" disabled>Run next step</button>
+          <button id="retry-step" type="button" class="ghost" hidden>
+            Retry this step
+          </button>
+          <button id="reboot-bootloader" type="button" class="ghost" hidden>
+            Reboot bootloader
+          </button>
+          <span id="step-hint" class="hint"></span>
+        </div>
+      </section>
+
+      <section class="panel" id="backups-panel">
+        <h2>Restore a backup</h2>
+        <p class="sub">
+          Independent recovery path: connect the headset, and this roots it with
+          ionstack and writes the images back. No downgrade, no fastboot, no
+          unlock. It needs a working adb shell, so it can only repair the
+          <em>inactive</em> slot from a device that still boots — if the active
+          slot is dead there is no shell to run the exploit in. The untouched
+          other slot is what protects you there, not this.
+        </p>
+        <div id="backups"></div>
+        <div class="row backup-import">
+          <button id="import-backup" type="button" class="ghost">
+            Import backup from disk
+          </button>
+          <input
+            id="import-files"
+            type="file"
+            accept=".zip,.img"
+            multiple
+            hidden
+          />
+          <span class="hint">
+            a <code>.zip</code> saved by this tool, or loose
+            <code>.img</code> files — for backups from another browser profile
+            or machine
+          </span>
+        </div>
+      </section>
+
+      <section class="panel log-panel">
+        <div class="row">
+          <h2>Log</h2>
+          <button id="copy-log" type="button" class="ghost small">Copy log</button>
+        </div>
+        <pre id="log"></pre>
+      </section>
+
+      <footer>
+        <p>
+          Chromium browser over <code>https</code> or <code>localhost</code>.
+          Developer Mode on, <code>adb kill-server</code> run, and on Windows the
+          ADB and fastboot interfaces both bound to WinUSB. Unlocking the
+          bootloader makes the headset wipe user data on its next boot.
+        </p>
+      </footer>
+    </main>
+
+    <dialog id="confirm-dialog">
+      <form method="dialog" id="confirm-form">
+        <h2 id="confirm-heading">Confirm</h2>
+        <div id="confirm-body"></div>
+        <label class="confirm-label" for="confirm-input">
+          Type <code id="confirm-phrase"></code> to continue:
+        </label>
+        <input
+          id="confirm-input"
+          type="text"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+        />
+        <div class="row dialog-actions">
+          <button id="confirm-cancel" type="button" class="ghost">Cancel</button>
+          <button id="confirm-revert" type="button" class="danger-ghost" hidden>
+            Revert slot to backup
+          </button>
+          <button id="confirm-ok" type="button" class="danger" disabled>
+            Continue
+          </button>
+        </div>
+      </form>
+    </dialog>
+
+    <dialog id="notice-dialog">
+      <form method="dialog">
+        <h2 id="notice-heading">Notice</h2>
+        <div id="notice-body"></div>
+        <div class="row dialog-actions">
+          <button id="notice-action" type="button" hidden></button>
+          <button id="notice-ok" type="button" class="ghost">OK</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

@@ -1,0 +1,52 @@
+{
+  "name": "quest1_bootlader-unlocker-web",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Downgrades a Meta Quest 1 inactive boot slot to firmware 16476800119700000 and unlocks the bootloader via CVE-2021-1931, entirely from a Chromium browser over WebUSB.",
+  "keywords": [
+    "quest1",
+    "meta-quest",
+    "oculus",
+    "bootloader",
+    "unlock",
+    "cve-2021-1931",
+    "webusb",
+    "adb",
+    "fastboot",
+    "android",
+    "ab-slots",
+    "firmware",
+    "downgrade",
+    "ionstack"
+  ],
+  "license": "MIT",
+  "author": "",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/sync-assets.mjs --with-dev && vite",
+    "build": "node scripts/sync-assets.mjs && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run verify && npm run test-zip && npm run test-gpt && npm run test-controls",
+    "verify": "tsx scripts/verify-abl.ts",
+    "test-zip": "node scripts/test-zip-roundtrip.mjs",
+    "test-gpt": "tsx scripts/test-gpt.ts",
+    "test-controls": "node scripts/test-backup-controls.mjs",
+    "sync-assets": "node scripts/sync-assets.mjs --with-dev",
+    "hash-assets": "node scripts/sync-assets.mjs --regenerate",
+    "pin-pe-hash": "tsx scripts/pin-pe-hash.ts"
+  },
+  "dependencies": {
+    "@yume-chan/adb": "^2.6.3",
+    "@yume-chan/adb-credential-web": "^2.1.0",
+    "@yume-chan/adb-daemon-webusb": "^2.3.2",
+    "@yume-chan/stream-extra": "^2.6.1",
+    "fflate": "^0.8.3"
+  },
+  "devDependencies": {
+    "@types/w3c-web-usb": "^1.0.14",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  }
+}

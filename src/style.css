@@ -1,0 +1,535 @@
+:root {
+  color-scheme: dark;
+  --bg: #101215;
+  --panel: #181b20;
+  --border: #2a2f37;
+  --fg: #e6e8ea;
+  --muted: #9aa2ad;
+  --accent: #4c8dff;
+  --ok: #3fbf7f;
+  --warn: #e0a33e;
+  --err: #ff6b6b;
+  font-family: ui-sans-serif, system-ui, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0 0 0.25rem;
+}
+
+h2 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 0.75rem;
+}
+
+.sub,
+footer p {
+  color: var(--muted);
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+button {
+  font: inherit;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.ghost {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.check {
+  font-size: 0.85rem;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-left: auto;
+}
+
+.status {
+  margin: 0.9rem 0 0;
+  font-size: 0.875rem;
+  padding-left: 1.1rem;
+  position: relative;
+}
+
+.status::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.45em;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.status.idle {
+  color: var(--muted);
+}
+.status.busy {
+  color: var(--warn);
+}
+.status.ok {
+  color: var(--ok);
+}
+.status.error {
+  color: var(--err);
+}
+
+.fingerprint {
+  flex: 1 1 20rem;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.9rem;
+  word-break: break-all;
+  background: #0d0f12;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0.6rem 0.7rem;
+  user-select: all;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.85rem;
+}
+
+td {
+  border-top: 1px solid var(--border);
+  padding: 0.4rem 0.2rem;
+  vertical-align: top;
+}
+
+td:first-child {
+  color: var(--muted);
+  white-space: nowrap;
+  width: 1%;
+  padding-right: 1.25rem;
+}
+
+td:last-child {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  word-break: break-all;
+}
+
+pre#log {
+  margin: 0;
+  max-height: 16rem;
+  overflow: auto;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.6;
+  color: var(--muted);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+code {
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.9em;
+  color: var(--fg);
+}
+
+/* ---------------------------------------------------------------- gates */
+
+.gates,
+.steps {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.gate,
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #14171c;
+  font-size: 0.875rem;
+}
+
+.gate span,
+.step-detail {
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.gate-ok strong {
+  color: var(--ok);
+}
+.gate-warn strong {
+  color: var(--warn);
+}
+.gate-abort strong {
+  color: var(--err);
+}
+
+/* ---------------------------------------------------------------- steps */
+
+.steps {
+  counter-reset: step;
+}
+
+.step {
+  position: relative;
+  padding-left: 2.5rem;
+}
+
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: 0.75rem;
+  top: 0.65rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.7rem;
+  display: grid;
+  place-items: center;
+}
+
+.step-done::before {
+  content: "✓";
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.step-failed::before {
+  content: "!";
+  border-color: var(--err);
+  color: var(--err);
+}
+.step-running::before {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.step-current {
+  border-color: var(--accent);
+}
+
+.step-done strong {
+  color: var(--ok);
+}
+.step-failed strong {
+  color: var(--err);
+}
+
+.step-error {
+  color: var(--err);
+  font-size: 0.8rem;
+  white-space: pre-wrap;
+  margin-top: 0.35rem;
+}
+
+.step-progress {
+  color: var(--warn);
+  font-size: 0.78rem;
+  margin-top: 0.35rem;
+}
+
+.bar {
+  height: 4px;
+  border-radius: 2px;
+  background: #22262d;
+  overflow: hidden;
+  margin-top: 0.35rem;
+}
+
+.bar-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 120ms linear;
+}
+
+.step-actions {
+  margin-top: 1rem;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+/* -------------------------------------------------------------- backups */
+
+.backup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+.backup span {
+  color: var(--muted);
+  font-size: 0.78rem;
+  word-break: break-all;
+}
+
+/* --------------------------------------------------------------- dialog */
+
+dialog {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--fg);
+  max-width: 34rem;
+  padding: 1.25rem;
+}
+
+dialog::backdrop {
+  background: rgb(0 0 0 / 0.65);
+}
+
+dialog h2 {
+  color: var(--err);
+  font-size: 1rem;
+  text-transform: none;
+  letter-spacing: 0;
+  margin-bottom: 0.75rem;
+}
+
+dialog p {
+  color: var(--fg);
+  font-size: 0.85rem;
+  line-height: 1.55;
+  margin: 0 0 0.7rem;
+}
+
+.confirm-label {
+  display: block;
+  font-size: 0.85rem;
+  color: var(--muted);
+  margin: 0.5rem 0 0.35rem;
+}
+
+.confirm-label code {
+  color: var(--warn);
+  font-weight: 600;
+  user-select: all;
+}
+
+dialog input {
+  width: 100%;
+  font: inherit;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.9rem;
+  padding: 0.5rem 0.6rem;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: #0d0f12;
+  color: var(--fg);
+}
+
+.dialog-actions {
+  margin-top: 1rem;
+  justify-content: flex-end;
+}
+
+button.danger {
+  background: var(--err);
+  color: #14171c;
+  font-weight: 600;
+}
+
+button.danger-ghost {
+  background: transparent;
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+button.small {
+  font-size: 0.78rem;
+  padding: 0.3rem 0.6rem;
+  margin-left: auto;
+}
+
+/* ------------------------------------------------------------------ log */
+
+.log-warn {
+  color: var(--warn);
+}
+.log-error {
+  color: var(--err);
+}
+.log-good {
+  color: var(--ok);
+}
+
+pre#log {
+  max-height: 22rem;
+}
+
+.backup-actions {
+  margin-top: 0.6rem;
+}
+
+.backup-actions button {
+  font-size: 0.8rem;
+  padding: 0.35rem 0.65rem;
+}
+
+.dev-banner {
+  margin: 0.9rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--warn);
+  border-radius: 8px;
+  color: var(--warn);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.dev-banner strong {
+  color: var(--warn);
+}
+
+#notice-dialog h2 {
+  color: var(--accent);
+}
+
+#notice-action {
+  background: var(--accent);
+}
+
+.dev-banner p {
+  margin: 0 0 0.6rem;
+  color: inherit;
+}
+
+.dev-cap {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.dev-cap input {
+  width: 5.5rem;
+  font: inherit;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  padding: 0.25rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: #0d0f12;
+  color: var(--fg);
+}
+
+.dev-cap .hint {
+  flex-basis: 100%;
+  color: var(--muted);
+}
+
+.backup-import {
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.backups-empty {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+}
+
+.backup-incomplete {
+  border-color: var(--warn);
+}
+
+.badge {
+  display: inline-block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  margin-left: 0.5rem;
+  vertical-align: middle;
+}
+
+.badge-complete {
+  background: rgb(63 191 127 / 0.15);
+  color: var(--ok);
+}
+
+.badge-incomplete {
+  background: rgb(224 163 62 / 0.15);
+  color: var(--warn);
+}
+
+button.btn-delete {
+  margin-left: auto;
+  color: var(--err);
+  border-color: transparent;
+}
+
+button.btn-delete:hover:not(:disabled) {
+  border-color: var(--err);
+}

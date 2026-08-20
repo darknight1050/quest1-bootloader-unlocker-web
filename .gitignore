@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dist-probe/
+
+# Mirrored from binaries/ by scripts/sync-assets.mjs; not committed twice.
+public/binaries/
+
+# Dev-only payloads. Never shipped in a production build, and the core flow
+# does not need them — sync-assets warns and carries on when absent. Their
+# hashes stay pinned in binaries/EXPECTED.sha256 regardless.
+binaries/dev/
