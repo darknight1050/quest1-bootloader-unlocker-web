@@ -177,6 +177,20 @@ export interface BackupProgress {
  * Dumps one partition to a file, streams it into OPFS, then drops the copy on
  * the device so /data does not fill up.
  */
+/**
+ * Name a partition image is stored under inside a backup set.
+ *
+ * The one definition of it: `expected`, the recorded entries, the verify and
+ * restore lookups and the zip importer all have to agree, and they only do if
+ * they all come from here.
+ */
+export function backupEntryName(
+    partition: AnyPartition,
+    slotSuffix: string,
+): string {
+    return `${partition}${slotSuffix}.img`;
+}
+
 export async function backupPartition(
     adb: Adb,
     set: BackupSet,
@@ -187,7 +201,7 @@ export async function backupPartition(
 ): Promise<string> {
     const device = blockDevice(partition, slotSuffix);
     const onDevice = `${BACKUP_DIR}/${partition}${slotSuffix}.img`;
-    const name = `${partition}${slotSuffix}.img`;
+    const name = backupEntryName(partition, slotSuffix);
 
     onProgress?.({ partition, phase: "dump", transferred: 0, total: size });
     await shellOk(adb, `mkdir -p ${BACKUP_DIR}`);
@@ -327,7 +341,7 @@ export async function verifyBackup(
     slotSuffix: string,
     onProgress?: (phase: "read" | "device") => void,
 ): Promise<{ stored: string; device: string; recorded: string }> {
-    const name = `${partition}${slotSuffix}.img`;
+    const name = backupEntryName(partition, slotSuffix);
     const entry = set.meta.entries.find((e) => e.name === name);
     if (!entry) {
         throw new Error(`no backup was recorded for ${name}`);
@@ -361,7 +375,7 @@ export async function restorePartition(
     slotSuffix: string,
     onProgress?: (progress: FlashProgress) => void,
 ): Promise<{ expected: string; actual: string }> {
-    const name = `${partition}${slotSuffix}.img`;
+    const name = backupEntryName(partition, slotSuffix);
     const entry = set.meta.entries.find((e) => e.name === name);
     if (!entry) {
         throw new Error(`no backup was recorded for ${name}`);

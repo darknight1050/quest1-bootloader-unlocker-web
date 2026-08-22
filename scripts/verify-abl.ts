@@ -6,7 +6,6 @@ import {
     type AblPatch,
     OVERFLOW,
     PATCH_16476800119700000,
-    SKIP_WIPE_16476800119700000,
     applyPatch,
     buildUnlockPayload,
     buildUnlockPayloadFromAbl,
@@ -116,46 +115,27 @@ const checks: [string, boolean][] = [
 ];
 
 console.log();
-// --- both toggle variants --------------------------------------------------
+// --- the payload the unlock sends -----------------------------------------
 {
-    const stock = unlockPatch();
-    const skip = unlockPatch({ skipWipe: true });
+    const patch = unlockPatch();
 
-    checks.push(["default patch is the bypass only", stock.length === 1
-        && stock[0]!.offset === 0x3777c]);
-    checks.push(["skipWipe adds exactly one edit", skip.length === 2
-        && skip[0]!.offset === 0x3777c && skip[1]!.offset === 0x37a74]);
-    checks.push(["skipWipe does not mutate the base patch",
+    checks.push(["unlockPatch is the bypass only", patch.length === 1
+        && patch[0]!.offset === 0x3777c]);
+    checks.push(["unlockPatch does not mutate the base patch",
         PATCH_16476800119700000.length === 1]);
 
-    const wipeEdit = SKIP_WIPE_16476800119700000;
-    checks.push(["skip-wipe expect matches the image",
-        wipeEdit.expect.every((b, i) => pristine[wipeEdit.offset + i] === b)]);
+    const image = pristine.slice();
+    applyPatch(image, patch);
+    const built = buildUnlockPayload(image, patch);
+    checks.push([`payload is 0x100000 + 0x${patchEnd(patch).toString(16)}`,
+        built.length === OVERFLOW + patchEnd(patch)]);
+    checks.push(["payload carries every edit",
+        patch.every((e) => hex(built.subarray(OVERFLOW + e.offset, OVERFLOW + e.offset + e.replace.length))
+            === hex(Uint8Array.from(e.replace)))]);
 
-    // b.ne +0x40 -> b +0x40: same destination, made unconditional.
-    const w = (b: readonly number[]) => (b[0]! | (b[1]! << 8) | (b[2]! << 16) | (b[3]! << 24)) >>> 0;
-    const bcondTarget = wipeEdit.offset + (((w(wipeEdit.expect) >>> 5) & 0x7ffff) * 4);
-    const bTarget = wipeEdit.offset + ((w(wipeEdit.replace) & 0x3ffffff) * 4);
-    checks.push([`skip-wipe keeps the branch destination (0x${bTarget.toString(16)})`,
-        bcondTarget === bTarget]);
-    checks.push(["skip-wipe replacement is an unconditional B",
-        (w(wipeEdit.replace) >>> 26) === 0x05]);
-
-    for (const [label, patch] of [["stock", stock], ["skip-wipe", skip]] as const) {
-        const image = pristine.slice();
-        applyPatch(image, patch);
-        const built = buildUnlockPayload(image, patch);
-        checks.push([`${label} payload is 0x100000 + 0x${patchEnd(patch).toString(16)}`,
-            built.length === OVERFLOW + patchEnd(patch)]);
-        checks.push([`${label} payload carries every edit`,
-            patch.every((e) => hex(built.subarray(OVERFLOW + e.offset, OVERFLOW + e.offset + e.replace.length))
-                === hex(Uint8Array.from(e.replace)))]);
-    }
-
-    const stockImage = pristine.slice();
-    applyPatch(stockImage, stock);
-    checks.push(["stock payload leaves the wipe branch conditional",
-        hex(stockImage.subarray(wipeEdit.offset, wipeEdit.offset + 4)) === hex(Uint8Array.from(wipeEdit.expect))]);
+    // The bootloader's userdata/misc/metadata wipe is left exactly as shipped.
+    checks.push(["the payload leaves the wipe branch untouched",
+        hex(image.subarray(0x37a74, 0x37a78)) === hex(pristine.subarray(0x37a74, 0x37a78))]);
 }
 
 let failed = 0;

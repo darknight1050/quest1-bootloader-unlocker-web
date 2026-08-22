@@ -38,6 +38,7 @@ npm run pin-pe-hash  # re-pin the extracted bootloader hash in flow.ts
 | 9 | Reboot into fastboot | adb |
 | 10 | Check build number, send the payload, request the unlock token | fastboot, **typed confirmation** |
 | 11 | Re-confirm unlock state, then `set_active` the original slot | fastboot |
+| 12 | Reboot out of fastboot so Android marks the slot successful | fastboot |
 
 The backup covers exactly the partitions the flash step overwrites — the 13 in
 the archive, no more and no less. Nothing is ever skipped: `checkPartitions`
@@ -92,6 +93,7 @@ The unlock step runs in a fixed order, and the order matters:
 3. read the lock state — **tentative**
 4. `reboot-bootloader`, wait for re-enumeration, reconnect
 5. read the lock state again — **authoritative**
+6. `oem reset-rollback-indexes`, once the unlock is confirmed
 
 Steps 1 and 2 must not be separated. The patch lives in the running
 bootloader's memory, so rebooting between them would discard it before the
@@ -102,6 +104,18 @@ verification was just disabled in memory, so it says little about what was
 persisted. Step 5 asks a bootloader that booted normally, and that answer is the
 one the step succeeds or fails on. A bootloader that claims unlocked while
 patched but locked after a clean boot is reported as exactly that.
+
+Step 6 clears the anti-rollback floor. Verified boot records a minimum version
+per image and refuses anything older, so the slot we rolled back can be rejected
+on a later boot. `oem reset-rollback-indexes` is in this bootloader's own command
+table (alongside `oem reset-devinfo`), with `Failed to reset rollback indexes:
+%r` as its failure message.
+
+It runs only after the unlock is confirmed, and a failure is reported loudly but
+does **not** fail the step — the unlock itself already succeeded, and failing
+here would imply otherwise. The final step repeats the warning if it did not
+work. Note that nothing can undo a version already burned into fuses; the image
+also talks to TZ via `TZ_UPDATE_ROLLBACK_VERSION_ID`, and that path is one-way.
 
 The reboot also leaves the device ready to retry: the overflow does not always
 land, and retrying against a bootloader whose command buffer was just overrun is

@@ -57,6 +57,25 @@ export async function shell(adb: Adb, command: string): Promise<ShellResult> {
     return { stdout: output.trim(), stderr: "", exitCode: 0 };
 }
 
+/**
+ * Like {@link shell}, but hands back stdout byte-for-byte.
+ *
+ * {@link shell} trims, which is wrong when the output is a slice of a file and
+ * the trailing newline decides where a line ends.
+ */
+export async function shellRaw(adb: Adb, command: string): Promise<string> {
+    const shellProtocol = adb.subprocess.shellProtocol;
+    if (shellProtocol) {
+        const result = await shellProtocol.spawnWaitText(command);
+        return result.stdout;
+    }
+
+    const process = await adb.subprocess.noneProtocol.spawn(command);
+    return await process.output
+        .pipeThrough(new TextDecoderStream())
+        .pipeThrough(new ConcatStringStream());
+}
+
 /** Runs a command and throws unless it exits 0. */
 export async function shellOk(adb: Adb, command: string): Promise<string> {
     const { stdout, stderr, exitCode } = await shell(adb, command);

@@ -42,6 +42,17 @@ export interface BackupSetMeta {
     readonly mode: "unlock" | "dev";
 }
 
+/**
+ * Compares entry names ignoring the `.img` suffix.
+ *
+ * Sets written before `expected` and the stored entries agreed list partitions
+ * bare (`boot_b`) while the files are named `boot_b.img`. Both spellings mean
+ * the same partition, and an old set should not be stuck "incomplete" over it.
+ */
+function canonicalEntryName(name: string): string {
+    return name.replace(/\.img$/, "");
+}
+
 const ROOT_DIR = "backups";
 const META_FILE = "backup.json";
 
@@ -136,8 +147,12 @@ export class BackupSet {
      * that does not actually hold what it claims.
      */
     async markComplete(): Promise<void> {
-        const stored = new Set(this.#meta.entries.map((entry) => entry.name));
-        const missing = this.#meta.expected.filter((name) => !stored.has(name));
+        const stored = new Set(
+            this.#meta.entries.map((entry) => canonicalEntryName(entry.name)),
+        );
+        const missing = this.#meta.expected.filter(
+            (name) => !stored.has(canonicalEntryName(name)),
+        );
         if (missing.length > 0) {
             throw new Error(
                 `cannot mark backup ${this.id} complete: missing ${missing.join(", ")}`,
@@ -285,8 +300,8 @@ export async function importBackupSet(
     }
 
     // Only a set covering everything may claim to be complete.
-    const stored = new Set(imported);
-    if (details.expected.every((name) => stored.has(name))) {
+    const stored = new Set(imported.map(canonicalEntryName));
+    if (details.expected.every((name) => stored.has(canonicalEntryName(name)))) {
         await set.markComplete();
     }
 
@@ -427,8 +442,11 @@ export async function importBackupZip(
         imported.push(name);
     }
 
-    const stored = new Set(imported);
-    if (corrupt.length === 0 && expected.every((name) => stored.has(name))) {
+    const stored = new Set(imported.map(canonicalEntryName));
+    if (
+        corrupt.length === 0 &&
+        expected.every((name) => stored.has(canonicalEntryName(name)))
+    ) {
         await set.markComplete();
     }
 

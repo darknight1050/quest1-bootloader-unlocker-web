@@ -42,6 +42,35 @@ export class FastbootError extends Error {
     }
 }
 
+/**
+ * True for the errors WebUSB raises once the bootloader leaves the bus.
+ *
+ * Unlocking is one of the moments this happens by design: the bootloader
+ * erases userdata and reboots to do it, so the transfer that would have read
+ * the answer fails instead. That is not the same as the tool being broken, and
+ * callers need to be able to tell the two apart.
+ */
+export function isLinkLost(error: unknown): boolean {
+    if (error instanceof FastbootError) {
+        // The device answered — it just said no.
+        return false;
+    }
+    if (!(error instanceof Error)) {
+        return false;
+    }
+    if (
+        error.name === "NetworkError" ||
+        error.name === "NotFoundError" ||
+        error.name === "InvalidStateError" ||
+        error.name === "AbortError"
+    ) {
+        return true;
+    }
+    return /transfer(In|Out)|transfer error|disconnect|device is not open|no device/i.test(
+        error.message,
+    );
+}
+
 interface Endpoints {
     readonly interfaceNumber: number;
     readonly inEndpoint: number;
@@ -341,6 +370,28 @@ export async function rebootToBootloader(
     // otherwise the stale handle gets picked straight back up.
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
+    const back = await waitForBootloader({ onLog, timeoutMs, pollMs });
+    if (!back) {
+        throw new Error(
+            `the bootloader did not come back within ${Math.round(timeoutMs / 1000)}s. ` +
+                "Unplug and replug the cable, then use “Connect bootloader”.",
+        );
+    }
+    return back;
+}
+
+/**
+ * Waits for a fastboot interface to appear and opens it.
+ *
+ * Returns undefined rather than throwing when the wait runs out: a device that
+ * does not come back is not always a failure — after an unlock it is off
+ * wiping userdata — so what that means is the caller's call to make.
+ */
+export async function waitForBootloader({
+    onLog,
+    timeoutMs = 30_000,
+    pollMs = 500,
+}: RebootOptions = {}): Promise<FastbootDevice | undefined> {
     const deadline = Date.now() + timeoutMs;
     for (let attempt = 1; Date.now() < deadline; attempt++) {
         const found = await FastbootDevice.find();
@@ -358,16 +409,47 @@ export async function rebootToBootloader(
         }
         await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
+    return undefined;
+}
 
-    throw new Error(
-        `the bootloader did not come back within ${Math.round(timeoutMs / 1000)}s. ` +
-            "Unplug and replug the cable, then use “Connect bootloader”.",
+/**
+ * Clears the anti-rollback indexes.
+ *
+ * `oem reset-rollback-indexes` is in this bootloader's own command table, next
+ * to `oem reset-devinfo`; a failure comes back as
+ * `Failed to reset rollback indexes: %r`.
+ *
+ * It matters after a downgrade: verified boot records a minimum version per
+ * image and refuses anything older, so a slot rolled back to an earlier build
+ * can be rejected on a later boot. Clearing the indexes removes that floor.
+ *
+ * What it cannot undo is anything already burned into fuses — the image also
+ * talks to TZ via `TZ_UPDATE_ROLLBACK_VERSION_ID`, and fused versions are
+ * one-way. This resets what is resettable and no more.
+ */
+export async function resetRollbackIndexes(
+    device: FastbootDevice,
+    onLog?: (line: string) => void,
+): Promise<FastbootResponse> {
+    const response = await device.command("oem reset-rollback-indexes", (line) =>
+        onLog?.(`  info: ${line}`),
     );
+    onLog?.(
+        `oem reset-rollback-indexes: ${response.status} ${response.message}`.trimEnd(),
+    );
+    return response;
 }
 
 export interface UnlockState {
     /** True when the bootloader reports itself unlocked. */
     readonly unlocked: boolean;
+    /**
+     * True when the bootloader stopped answering before it could be read.
+     *
+     * `unlocked` is then meaningless rather than false: nothing was read, so
+     * nothing was ruled out. Callers must say "unknown", never "still locked".
+     */
+    readonly linkLost: boolean;
     /** Raw values the decision was made from. */
     readonly evidence: Record<string, string>;
 }
@@ -381,13 +463,32 @@ export interface UnlockState {
  */
 export async function readUnlockState(device: FastbootDevice): Promise<UnlockState> {
     const evidence: Record<string, string> = {};
+    let linkLost = false;
 
-    const unlockedVar = await device.getVar("unlocked");
+    let unlockedVar: string | undefined;
+    try {
+        unlockedVar = await device.getVar("unlocked");
+    } catch (error) {
+        if (!isLinkLost(error)) throw error;
+        linkLost = true;
+        evidence["getvar:unlocked"] = "(no answer — the bootloader left the bus)";
+    }
     if (unlockedVar !== undefined) {
         evidence["getvar:unlocked"] = unlockedVar;
     }
 
-    const info = await device.deviceInfo();
+    const info = new Map<string, string>();
+    if (!linkLost) {
+        try {
+            for (const [key, value] of await device.deviceInfo()) {
+                info.set(key, value);
+            }
+        } catch (error) {
+            if (!isLinkLost(error)) throw error;
+            linkLost = true;
+            evidence["oem device-info"] = "(no answer — the bootloader left the bus)";
+        }
+    }
     for (const [key, value] of info) {
         evidence[`oem device-info/${key}`] = value;
     }
@@ -401,6 +502,7 @@ export async function readUnlockState(device: FastbootDevice): Promise<UnlockSta
 
     return {
         unlocked: truthy(unlockedVar) || truthy(deviceUnlocked),
+        linkLost,
         evidence,
     };
 }
@@ -424,7 +526,13 @@ export async function performUnlock(
     { onLog, onProgress }: UnlockOptions = {},
 ): Promise<UnlockState> {
     onLog?.(`sending ${payload.length} byte overflow payload`);
-    await device.writeRaw(payload, onProgress);
+    try {
+        await device.writeRaw(payload, onProgress);
+    } catch (error) {
+        if (!isLinkLost(error)) throw error;
+        onLog?.("the bootloader left the bus while the payload was being sent");
+        return { unlocked: false, linkLost: true, evidence: {} };
+    }
 
     // The bootloader may answer, or may say nothing at all. Read at most one
     // packet and do not block on it: silence here is the normal case.
@@ -436,10 +544,32 @@ export async function performUnlock(
     );
 
     onLog?.("requesting unlock token");
-    const unlockResponse = await device.command("flash:unlock_token", (line) =>
-        onLog?.(`  info: ${line}`),
-    );
-    onLog?.(`unlock_token: ${unlockResponse.status} ${unlockResponse.message}`);
+    try {
+        const unlockResponse = await device.command("flash:unlock_token", (line) =>
+            onLog?.(`  info: ${line}`),
+        );
+        onLog?.(
+            `unlock_token: ${unlockResponse.status} ${unlockResponse.message}`.trimEnd(),
+        );
+    } catch (error) {
+        if (!isLinkLost(error)) throw error;
+        onLog?.(
+            "the bootloader left the bus without answering the unlock request — " +
+                "which is what it does when the unlock takes and it reboots to wipe",
+        );
+        return {
+            unlocked: false,
+            linkLost: true,
+            evidence: { "flash:unlock_token": "(link dropped before an answer)" },
+        };
+    }
 
-    return readUnlockState(device);
+    const state = await readUnlockState(device);
+    if (state.linkLost) {
+        onLog?.(
+            "the bootloader stopped answering right after the unlock request — " +
+                "it usually reboots at this point to erase userdata",
+        );
+    }
+    return state;
 }

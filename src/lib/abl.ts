@@ -71,7 +71,7 @@ export function patchEnd(patch: AblPatch): number {
  * when verification succeeds. Replacing it with `b6 00 00 14` (`b +0x2d8`)
  * makes that jump unconditional, so verification never fails.
  *
- * This is the patch the unlock needs; everything else is optional.
+ * This one edit is the whole unlock patch.
  */
 export const PATCH_16476800119700000: AblPatch = [
     {
@@ -81,42 +81,9 @@ export const PATCH_16476800119700000: AblPatch = [
     },
 ];
 
-/**
- * Optional edit: unlock without erasing user data.
- *
- * At 0x37a70 the bootloader does `tst w20, #0xff` and, at 0x37a74,
- * `b.ne 0x37ab4`. When that branch is *not* taken it runs the block at
- * 0x37a78-0x37ab0, which calls the same routine three times with the UTF-16
- * partition names "userdata", "misc" and "metadata" — the wipe an unlock
- * performs.
- *
- * `10 00 00 14` is `b +0x40`: the branch's own destination, made
- * unconditional. The block's success path already ends at that same address
- * (`tbz x0, #0x3f, #0x37ab4` at 0x37aa4), so this lands exactly where the code
- * would have gone had all three calls succeeded — the wipe is skipped and the
- * surrounding control flow is untouched.
- *
- * Not enabled by default. On Android 10 `/data` is encrypted with keys bound
- * to the verified-boot state, so changing lock state without wiping can leave
- * `/data` undecryptable — which ends in a forced reset anyway. Whether the
- * Quest 1 behaves that way is not something static analysis can answer.
- */
-export const SKIP_WIPE_16476800119700000: AblEdit = {
-    offset: 0x37a74,
-    expect: [0x01, 0x02, 0x00, 0x54],
-    replace: [0x10, 0x00, 0x00, 0x14],
-};
-
-export interface UnlockPatchOptions {
-    /** Leave userdata, misc and metadata intact. Default false. */
-    readonly skipWipe?: boolean;
-}
-
-/** The patch to apply, given what the user asked for. */
-export function unlockPatch({ skipWipe = false }: UnlockPatchOptions = {}): AblPatch {
-    return skipWipe
-        ? [...PATCH_16476800119700000, SKIP_WIPE_16476800119700000]
-        : PATCH_16476800119700000;
+/** The patch the unlock applies. */
+export function unlockPatch(): AblPatch {
+    return PATCH_16476800119700000;
 }
 
 function u16(d: Uint8Array, o: number): number {

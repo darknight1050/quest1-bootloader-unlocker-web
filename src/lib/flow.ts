@@ -40,14 +40,18 @@ import {
 } from "./device.js";
 import {
     FastbootDevice,
+    isLinkLost,
     performUnlock,
     readUnlockState,
     rebootToBootloader,
+    waitForBootloader,
+    resetRollbackIndexes,
     type UnlockState,
 } from "./fastboot.js";
 import {
     PARTITIONS,
     type PartitionName,
+    backupEntryName,
     backupPartition,
     checkPartitions,
     cleanup,
@@ -224,6 +228,12 @@ function unlockSteps(): Step[] {
             detail: "Confirm the unlock took, then set the original slot active again.",
             state: "pending",
         },
+        {
+            id: "boot-os",
+            title: "Boot into the OS",
+            detail: "Leave fastboot and let Android mark the slot successful.",
+            state: "pending",
+        },
     ];
 }
 
@@ -308,17 +318,11 @@ export class Flow {
     payload: Uint8Array | undefined;
     /** Pristine LinuxLoader image; the payload is built from it at unlock time. */
     pe: Uint8Array | undefined;
-    /**
-     * Unlock without erasing userdata, misc and metadata.
-     *
-     * Off by default, and settable right up until the unlock step runs — which
-     * is why the payload is built when it is needed rather than pinned when the
-     * firmware is loaded.
-     */
-    skipWipe = false;
     backup: BackupSet | undefined;
     fastboot: FastbootDevice | undefined;
     unlockState: UnlockState | undefined;
+    /** Whether `oem reset-rollback-indexes` succeeded after the unlock. */
+    rollbackReset: boolean | undefined;
 
     /** Slot the device booted from, restored at the very end. */
     originalSlot: number | undefined;
@@ -423,14 +427,8 @@ export class Flow {
                     body: [
                         "This sends the CVE-2021-1931 overflow payload to the bootloader and " +
                             "then requests the unlock token.",
-                        this.skipWipe
-                            ? "SKIP-WIPE IS ON: the patched bootloader will not erase " +
-                                  "userdata, misc or metadata. On Android 10 /data is " +
-                                  "encrypted against the verified-boot state, so it may still " +
-                                  "fail to mount afterwards and force a reset anyway. This is " +
-                                  "the experimental path and it has not been tested on hardware."
-                            : "Unlocking erases userdata, misc and metadata. That is the " +
-                                  "bootloader's stock behaviour; the skip-wipe toggle changes it.",
+                        "Unlocking erases userdata, misc and metadata. That is the " +
+                            "bootloader's stock behaviour and this tool does not change it.",
                         `To continue, type: unlock ${DOWNGRADE_TARGET}`,
                     ],
                     phrase: `unlock ${DOWNGRADE_TARGET}`,
@@ -501,6 +499,8 @@ export class Flow {
                 return this.#stepUnlock(step);
             case "restore-slot":
                 return this.#stepRestoreSlot();
+            case "boot-os":
+                return this.#stepBootOs();
             case "dev-identify":
                 return this.#devIdentify();
             case "dev-root":
@@ -771,7 +771,9 @@ export class Flow {
                 targetSlot: target,
                 mode: "dev",
                 // Deliberately a subset: a rehearsal set is never a device backup.
-                expected: [...this.devPartitions.keys()].map((name) => `${name}${target}`),
+                expected: [...this.devPartitions.keys()].map((name) =>
+                    backupEntryName(name, target),
+                ),
             },
             new Date().toISOString(),
         );
@@ -871,6 +873,12 @@ export class Flow {
         for (const [key, value] of Object.entries(state.evidence)) {
             this.#log(`  ${key} = ${value}`);
         }
+        if (state.linkLost) {
+            throw new Error(
+                "the bootloader left the bus mid-read, so nothing could be parsed. " +
+                    "Reconnect with the button above and run this step again.",
+            );
+        }
         if (Object.keys(state.evidence).length === 0) {
             throw new Error(
                 "the bootloader answered neither getvar:unlocked nor oem device-info",
@@ -961,24 +969,22 @@ export class Flow {
         this.#log(`abl.img sha256 ${ablHash} — matches the pinned image`, "good");
         this.#log(`LinuxLoader PE ${pe.length} bytes, sha256 verified`, "good");
 
-        // Report both variants now so the choice is auditable before it is
-        // made; the one actually sent is built when the unlock step runs.
-        for (const skipWipe of [false, true]) {
-            const { payload, patch } = this.#buildPayload(skipWipe);
-            const sites = patch.map((e) => `0x${e.offset.toString(16)}`).join(", ");
-            this.#log(
-                `${skipWipe ? "skip-wipe" : "stock"} payload: ${patch.length} site(s) at ` +
-                    `${sites}, ${payload.length} bytes, sha256 ${await sha256(payload)}`,
-            );
-        }
+        // Report the payload now so it is auditable before it is sent; the
+        // one actually sent is built again when the unlock step runs.
+        const { payload, patch } = this.#buildPayload();
+        const sites = patch.map((e) => `0x${e.offset.toString(16)}`).join(", ");
+        this.#log(
+            `payload: ${patch.length} site(s) at ${sites}, ${payload.length} bytes, ` +
+                `sha256 ${await sha256(payload)}`,
+        );
     }
 
-    /** Builds the payload for a given wipe choice from the pristine image. */
-    #buildPayload(skipWipe: boolean): { payload: Uint8Array; patch: AblPatch } {
+    /** Builds the unlock payload from the pristine image. */
+    #buildPayload(): { payload: Uint8Array; patch: AblPatch } {
         if (!this.pe) {
             throw new Error("the firmware has not been loaded yet");
         }
-        const patch = unlockPatch({ skipWipe });
+        const patch = unlockPatch();
         const image = this.pe.slice();
         applyPatch(image, patch);
         return { payload: buildUnlockPayload(image, patch), patch };
@@ -1094,7 +1100,7 @@ export class Flow {
                 slotSuffix: identity.slotSuffix,
                 targetSlot: target,
                 mode: "unlock",
-                expected: [...sizes.keys()].map((name) => `${name}${target}`),
+                expected: [...sizes.keys()].map((name) => backupEntryName(name, target)),
             },
             new Date().toISOString(),
         );
@@ -1467,14 +1473,9 @@ export class Flow {
         // The payload and the token request must not be separated: the patch
         // lives in the running bootloader's memory, so a reboot in between
         // would throw it away before the token is asked for.
-        const { payload, patch } = this.#buildPayload(this.skipWipe);
+        const { payload, patch } = this.#buildPayload();
         this.payload = payload;
-        this.#log(
-            this.skipWipe
-                ? "SKIP-WIPE payload: userdata, misc and metadata will be left intact"
-                : "stock payload: the bootloader will erase userdata, misc and metadata",
-            this.skipWipe ? "warn" : "info",
-        );
+        this.#log("the bootloader will erase userdata, misc and metadata");
         this.#log(
             `${patch.length} patch site(s), ${payload.length} bytes, sha256 ${await sha256(payload)}`,
         );
@@ -1489,16 +1490,49 @@ export class Flow {
             this.#log(`  ${key} = ${value}`);
         }
 
-        // That reading came from a bootloader whose verification we just
-        // disabled in memory, so it says little about what was persisted.
-        // Reboot and ask a clean one: that answer is the real one, and it also
-        // leaves the device ready to retry if the overflow missed.
-        this.#log("rebooting the bootloader to confirm the unlock persisted");
-        this.#progress(step, "rebooting the bootloader", 0, 1);
-        this.fastboot = await rebootToBootloader(device, {
-            onLog: (line) => this.#log(line),
-        });
-        this.#progress(step, "rebooting the bootloader", 1, 1);
+        if (tentative.linkLost) {
+            // Nothing to reboot: it already went. An unlock that takes erases
+            // userdata, and the headset leaves the bus to do it, so this is
+            // the expected shape of success — but it is not proof, and the
+            // reading that would prove it is exactly the one we could not get.
+            this.#log(
+                "the bootloader left the bus after the unlock request. That is what it " +
+                    "does when the unlock takes: it reboots to erase userdata.",
+                "warn",
+            );
+            try {
+                await device.close();
+            } catch {
+                // Already gone.
+            }
+            this.#log("reconnecting to fastboot");
+            this.#progress(step, "reconnecting to fastboot", 0, 1);
+            const back = await waitForBootloader({
+                onLog: (line) => this.#log(line),
+                timeoutMs: 60_000,
+            });
+            this.#progress(step, "reconnecting to fastboot", 1, 1);
+            if (!back) {
+                throw new Error(
+                    "the headset left fastboot after the unlock request and did not come " +
+                        "back, so the unlock could not be confirmed. It most likely worked. " +
+                        "Boot it back into the bootloader, press “Connect bootloader” and " +
+                        "run this step again — it will say so straight away if it did.",
+                );
+            }
+            this.fastboot = back;
+        } else {
+            // That reading came from a bootloader whose verification we just
+            // disabled in memory, so it says little about what was persisted.
+            // Reboot and ask a clean one: that answer is the real one, and it
+            // also leaves the device ready to retry if the overflow missed.
+            this.#log("rebooting the bootloader to confirm the unlock persisted");
+            this.#progress(step, "rebooting the bootloader", 0, 1);
+            this.fastboot = await rebootToBootloader(device, {
+                onLog: (line) => this.#log(line),
+            });
+            this.#progress(step, "rebooting the bootloader", 1, 1);
+        }
 
         const confirmed = await readUnlockState(this.fastboot);
         this.unlockState = confirmed;
@@ -1506,6 +1540,14 @@ export class Flow {
         this.#log("state after a clean boot:");
         for (const [key, value] of Object.entries(confirmed.evidence)) {
             this.#log(`  ${key} = ${value}`);
+        }
+
+        if (confirmed.linkLost) {
+            throw new Error(
+                "the bootloader stopped answering while the unlock was being confirmed, so " +
+                    "its state is unknown — not necessarily locked. Reconnect with " +
+                    "“Connect bootloader” and run this step again to read it.",
+            );
         }
 
         if (!confirmed.unlocked) {
@@ -1521,6 +1563,30 @@ export class Flow {
         }
 
         this.#log("bootloader reports UNLOCKED after a clean boot", "good");
+
+        // Only once the unlock is confirmed. Verified boot keeps a minimum
+        // version per image, so the slot we rolled back can be refused on a
+        // later boot until that floor is cleared.
+        this.#log("clearing the anti-rollback indexes");
+        const rollback = await resetRollbackIndexes(this.fastboot, (line) =>
+            this.#log(line),
+        );
+
+        if (rollback.status === "OKAY") {
+            this.rollbackReset = true;
+            this.#log("anti-rollback indexes cleared", "good");
+        } else {
+            this.rollbackReset = false;
+            // Not fatal: the unlock itself succeeded, and failing the step here
+            // would suggest otherwise. It is still worth shouting about, since
+            // the downgraded slot may stop booting later.
+            this.#log(
+                `could not clear the anti-rollback indexes: ${rollback.message}. The unlock ` +
+                    "itself succeeded, but the downgraded slot may be refused on a later " +
+                    "boot. Anything already burned into fuses cannot be cleared at all.",
+                "error",
+            );
+        }
     }
 
     async #stepRestoreSlot(): Promise<void> {
@@ -1534,6 +1600,12 @@ export class Flow {
         this.unlockState = state;
         for (const [key, value] of Object.entries(state.evidence)) {
             this.#log(`  ${key} = ${value}`);
+        }
+        if (state.linkLost) {
+            throw new Error(
+                "the bootloader stopped answering, so its lock state could not be read. " +
+                    "Reconnect with “Connect bootloader” and run this step again.",
+            );
         }
         if (!state.unlocked) {
             throw new Error(
@@ -1568,18 +1640,71 @@ export class Flow {
             );
         }
 
+        if (this.rollbackReset === false) {
+            this.#log(
+                "reminder: the anti-rollback indexes were NOT cleared, so the downgraded " +
+                    "slot may be refused on a later boot",
+                "warn",
+            );
+        }
+
         this.#log(
-            `done — slot ${original} is queued and the bootloader is unlocked.`,
+            `slot ${original} is queued and the bootloader is unlocked.`,
             "good",
         );
         this.#log(
             `set_active clears the successful flag, so slot ${original} now has a retry ` +
-                "counter just like a freshly installed update. Let the headset boot all " +
-                "the way into the system once: Android calls markBootSuccessful and the " +
-                "flag is set again. Until then the bootloader can still fall back to the " +
-                "other slot.",
+                "counter just like a freshly installed update. The last step boots the " +
+                "headset, which is what sets that flag again: Android calls " +
+                "markBootSuccessful once it is up. Until then the bootloader can still " +
+                "fall back to the other slot.",
             "warn",
         );
+    }
+
+    /**
+     * Leaves fastboot and boots the headset.
+     *
+     * The last thing the procedure needs is an actual boot: `set_active`
+     * cleared the successful flag, and only Android calling
+     * markBootSuccessful sets it again. Until that happens the bootloader is
+     * still spending retries and can fall back to the other slot.
+     *
+     * The link drops as the device goes, so a failed transfer here is the
+     * command working rather than failing.
+     */
+    async #stepBootOs(): Promise<void> {
+        const device = this.fastboot;
+        if (!device?.opened) {
+            throw new Error("connect to the fastboot device first");
+        }
+
+        this.#log("sending reboot");
+        try {
+            const response = await device.reboot();
+            this.#log(`reboot -> ${response.status} ${response.message}`.trimEnd());
+        } catch (error) {
+            if (!isLinkLost(error)) throw error;
+            this.#log("link dropped as the headset rebooted (normal)");
+        }
+
+        await device.close();
+        this.fastboot = undefined;
+
+        this.#log("the headset is booting", "good");
+        this.#log(
+            "Let it boot all the way into the system — that is what marks the slot " +
+                "successful. The first boot after an unlock wipes userdata, so it takes " +
+                "longer than usual and comes up at the setup screen.",
+            "warn",
+        );
+        if (this.rollbackReset === false) {
+            this.#log(
+                "reminder: the anti-rollback indexes were NOT cleared, so this boot may " +
+                    "still be refused",
+                "warn",
+            );
+        }
     }
 
     /** Best-effort tidy-up of the files we pushed. */

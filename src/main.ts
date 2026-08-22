@@ -19,7 +19,7 @@ import {
     importBackupZip,
     listBackupSets,
 } from "./lib/storage.js";
-import { PARTITIONS } from "./lib/partitions.js";
+import { PARTITIONS, backupEntryName } from "./lib/partitions.js";
 
 const OCULUS_VENDOR_ID = 0x2833;
 
@@ -33,8 +33,6 @@ const runStepButton = $<HTMLButtonElement>("run-step");
 const retryStepButton = $<HTMLButtonElement>("retry-step");
 const rebootBootloaderButton = $<HTMLButtonElement>("reboot-bootloader");
 const stepHint = $<HTMLSpanElement>("step-hint");
-const skipWipeOption = $<HTMLLabelElement>("skip-wipe-option");
-const skipWipeInput = $<HTMLInputElement>("skip-wipe");
 const statusText = $<HTMLParagraphElement>("status");
 const devicePanel = $<HTMLElement>("device-panel");
 const fingerprintOutput = $<HTMLOutputElement>("fingerprint");
@@ -233,13 +231,6 @@ function renderSteps(): void {
 function renderActions(): void {
     const step = flow.current;
 
-    // Only the real flow sends a payload, and the choice is fixed once the
-    // unlock step has run.
-    const unlockStep = flow.steps.find((s) => s.id === "unlock");
-    skipWipeOption.hidden = flow.mode !== "unlock";
-    skipWipeInput.disabled = busy || unlockStep?.state === "done";
-    skipWipeInput.checked = flow.skipWipe;
-
     if (busy) {
         runStepButton.disabled = true;
         retryStepButton.hidden = true;
@@ -265,6 +256,7 @@ function renderActions(): void {
     const fastbootStep = [
         "unlock",
         "restore-slot",
+        "boot-os",
         "dev-fastboot",
         "dev-reboot-bootloader",
     ].includes(step.id);
@@ -277,6 +269,7 @@ function renderActions(): void {
     const fastbootSteps = [
         "unlock",
         "restore-slot",
+        "boot-os",
         "dev-fastboot",
         "dev-reboot-bootloader",
     ];
@@ -445,9 +438,9 @@ async function offerBackupCleanup(): Promise<void> {
     await showNotice(
         "Unlock complete",
         [
-            `The bootloader is unlocked and slot ${flow.originalSlot === 0 ? "_a" : "_b"} ` +
-                "is queued to boot. Let the headset boot all the way into the system once " +
-                "so Android marks the slot successful.",
+            `The bootloader is unlocked and the headset is booting slot ` +
+                `${flow.originalSlot === 0 ? "_a" : "_b"}. Let it get all the way into the ` +
+                "system once so Android marks the slot successful.",
             `The backup of slot ${target} is still stored in this browser. It is what puts ` +
                 `${target} back to the firmware it held before the downgrade — that slot ` +
                 `still holds ${DOWNGRADE_TARGET} until you restore it.`,
@@ -836,7 +829,7 @@ async function runCurrentStep(): Promise<void> {
         if (step.id === "backup" || step.id === "verify-backup") {
             await renderBackups();
         }
-        if (step.id === "restore-slot") {
+        if (step.id === "boot-os") {
             await offerBackupCleanup();
         }
         if (step.id === "bootloader" || step.id === "dev-bootloader") {
@@ -951,7 +944,7 @@ importFilesInput.addEventListener("change", () => {
                   ...(await importBackupSet(files, {
                       serial,
                       fingerprint,
-                      expected: PARTITIONS.map((name) => `${name}${slot}`),
+                      expected: PARTITIONS.map((name) => backupEntryName(name, slot)),
                       createdAt,
                   })),
                   corrupt: [] as string[],
@@ -1003,17 +996,6 @@ rebootBootloaderButton.addEventListener("click", () => {
         }
         setStatus(`Bootloader back (${flow.fastboot.serial}).`, "ok");
     });
-});
-
-skipWipeInput.addEventListener("change", () => {
-    flow.skipWipe = skipWipeInput.checked;
-    log(
-        flow.skipWipe
-            ? "skip-wipe ENABLED — the unlock will not erase userdata, misc or metadata " +
-                  "(untested on hardware)"
-            : "skip-wipe disabled — the unlock will erase userdata, misc and metadata",
-        "warn",
-    );
 });
 
 copyLogButton.addEventListener("click", () => {
