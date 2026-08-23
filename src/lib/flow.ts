@@ -1011,17 +1011,20 @@ export class Flow {
             }
             this.#log("reconnecting to fastboot");
             this.#progress(step, "reconnecting to fastboot", 0, 1);
+            // Short: the page can only re-open a device it still has
+            // permission for, and when it does not — routinely so on Android
+            // — no amount of waiting helps. Failing hands the user the picker.
             const back = await waitForBootloader({
                 onLog: (line) => this.#log(line),
-                timeoutMs: 60_000,
+                timeoutMs: 15_000,
             });
             this.#progress(step, "reconnecting to fastboot", 1, 1);
             if (!back) {
                 throw new Error(
-                    "the headset left fastboot after the unlock request and did not come " +
-                        "back, so the unlock could not be confirmed. It most likely worked. " +
-                        "Boot it back into the bootloader, press “Connect bootloader” and " +
-                        "run this step again — it will say so straight away if it did.",
+                    "the headset left fastboot after the unlock request and could not be " +
+                        "picked up again automatically — the unlock itself most likely " +
+                        "worked. Reconnect with the picker below (or “Connect bootloader”) " +
+                        "and run this step again: it will say so straight away if it did.",
                 );
             }
             this.fastboot = back;
@@ -1121,6 +1124,24 @@ export class Flow {
         this.#log("unlock state confirmed before switching slots", "good");
 
         const original = slotLetter(this.originalSlot!);
+
+        // Read the slot first. A previous run may have set it and then failed
+        // on the reconnect — routinely so on Android, where the bootloader has
+        // to be picked from the USB dialog by hand. If it is already right,
+        // this step is done: switching again would restart the bootloader and
+        // wait for it a second time for nothing.
+        const before = await device.getVar("current-slot");
+        if (before !== undefined && before.trim().replace(/^_/, "") === original) {
+            this.#log(`getvar:current-slot = ${before}`);
+            this.#log(
+                `slot _${original} is already active and this bootloader has restarted ` +
+                    "since it was set — nothing left to do here",
+                "good",
+            );
+            this.#logSlotReminders(original);
+            return;
+        }
+
         const response = await device.setActive(original);
         this.#log(`set_active:${original} -> ${response.status} ${response.message}`, "good");
 
@@ -1166,6 +1187,11 @@ export class Flow {
         }
         this.#log("bootloader still reports UNLOCKED", "good");
 
+        this.#logSlotReminders(original);
+    }
+
+    /** What is true once the original slot is active again, either way. */
+    #logSlotReminders(original: string): void {
         if (this.rollbackReset === false) {
             this.#log(
                 "reminder: the anti-rollback indexes were NOT cleared, so the downgraded " +
@@ -1174,10 +1200,7 @@ export class Flow {
             );
         }
 
-        this.#log(
-            `slot ${original} is queued and the bootloader is unlocked.`,
-            "good",
-        );
+        this.#log(`slot ${original} is queued and the bootloader is unlocked.`, "good");
         this.#log(
             `set_active clears the successful flag, so slot ${original} now has a retry ` +
                 "counter just like a freshly installed update. The last step boots the " +

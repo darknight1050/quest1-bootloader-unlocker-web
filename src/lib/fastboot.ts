@@ -366,7 +366,7 @@ export interface RebootOptions {
  */
 export async function rebootToBootloader(
     device: FastbootDevice,
-    { onLog, timeoutMs = 30_000, pollMs = 500 }: RebootOptions = {},
+    { onLog, timeoutMs = 15_000, pollMs = 500 }: RebootOptions = {},
 ): Promise<FastbootDevice> {
     onLog?.("sending reboot-bootloader");
     try {
@@ -384,8 +384,10 @@ export async function rebootToBootloader(
     const back = await waitForBootloader({ onLog, timeoutMs, pollMs });
     if (!back) {
         throw new Error(
-            `the bootloader did not come back within ${Math.round(timeoutMs / 1000)}s. ` +
-                "Unplug and replug the cable, then use “Connect bootloader”.",
+            `the bootloader did not come back on its own within ${Math.round(timeoutMs / 1000)}s. ` +
+                "It has to be picked from the browser's USB dialog — a device that " +
+                "re-enumerates is a new device, and the page cannot open one it has not " +
+                "been granted.",
         );
     }
     return back;
@@ -400,11 +402,15 @@ export async function rebootToBootloader(
  */
 export async function waitForBootloader({
     onLog,
-    timeoutMs = 30_000,
+    timeoutMs = 15_000,
     pollMs = 500,
 }: RebootOptions = {}): Promise<FastbootDevice | undefined> {
     const deadline = Date.now() + timeoutMs;
     for (let attempt = 1; Date.now() < deadline; attempt++) {
+        // getDevices() lists only what this origin has been granted. A
+        // bootloader that comes back without that permission — the usual case
+        // on Android — never appears here however long we wait, which is why
+        // this gives up quickly and the caller falls back to the picker.
         const found = await FastbootDevice.find();
         if (found) {
             try {
@@ -420,6 +426,10 @@ export async function waitForBootloader({
         }
         await new Promise((resolve) => setTimeout(resolve, pollMs));
     }
+    onLog?.(
+        "the bootloader did not reappear on its own — it needs to be picked from the " +
+            "browser's USB dialog",
+    );
     return undefined;
 }
 

@@ -285,29 +285,14 @@ function renderActions(): void {
 
     // A missed overflow leaves the bootloader in an unknown state, so retrying
     // is only meaningful after a clean boot.
-    const fastbootStep = [
-        "unlock",
-        "restore-slot",
-        "factory-reset",
-        "boot-os",
-        "dev-fastboot",
-        "dev-reboot-bootloader",
-    ].includes(step.id);
+    const fastbootStep = FASTBOOT_STEPS.includes(step.id);
     rebootBootloaderButton.hidden = !(fastbootStep && flow.fastboot?.opened);
     rebootBootloaderButton.disabled = busy;
     rebootBootloaderButton.title =
         "Sends reboot-bootloader and reconnects — use this before retrying the unlock";
     runStepButton.textContent = failed ? `Run "${step.title}" again` : `Run: ${step.title}`;
 
-    const fastbootSteps = [
-        "unlock",
-        "restore-slot",
-        "factory-reset",
-        "boot-os",
-        "dev-fastboot",
-        "dev-reboot-bootloader",
-    ];
-    const needsFastboot = fastbootSteps.includes(step.id);
+    const needsFastboot = FASTBOOT_STEPS.includes(step.id);
     const needsAdb = !needsFastboot;
 
     if (needsAdb && !flow.adb) {
@@ -1048,6 +1033,34 @@ function runRevert(): void {
     });
 }
 
+/** Steps that talk to the bootloader rather than to a running system. */
+const FASTBOOT_STEPS = ["unlock", "restore-slot", "factory-reset", "boot-os"];
+
+/**
+ * Hands the user the USB picker for the bootloader.
+ *
+ * Every restart re-enumerates it, and a page cannot re-open a device it has
+ * not been granted — `requestDevice` needs a real click, which is what the
+ * button in this dialog provides. On Android the grant often does not survive
+ * the reconnect at all, so this is the way out of a wait that would otherwise
+ * never finish.
+ */
+async function offerFastbootPicker(intro: string): Promise<void> {
+    await showNotice(
+        "Reconnect over fastboot",
+        [
+            intro,
+            "The bootloader is a different USB device (product id 0x81) from the ADB " +
+                "one, and it comes back as a new device every time it restarts, so the " +
+                "permission you granted before may no longer cover it.",
+            "Wait for the boot logo to settle, then pick the device. On Windows that " +
+                "interface must also be bound to WinUSB, separately from the ADB one.",
+            "If no device appears, unplug and replug the cable and try again.",
+        ],
+        { label: "Choose the fastboot device", run: connectFastboot },
+    );
+}
+
 async function runCurrentStep(): Promise<void> {
     const step = flow.current;
     if (!step) return;
@@ -1077,22 +1090,20 @@ async function runCurrentStep(): Promise<void> {
         }
         if (step.id === "bootloader") {
             setStatus("Headset is rebooting into fastboot.", "warn");
-            await showNotice(
-                "Reconnect over fastboot",
-                [
-                    "The headset is rebooting into its bootloader. It comes back as a " +
-                        "different USB device (product id 0x81), so the ADB permission you " +
-                        "granted earlier does not cover it.",
-                    "Wait for the boot logo to settle, then grant access to the new device " +
-                        "in the picker. On Windows that interface must also be bound to " +
-                        "WinUSB, separately from the ADB one.",
-                    "If no device appears, unplug and replug the cable and try again.",
-                ],
-                { label: "Choose the fastboot device", run: connectFastboot },
-            );
+            await offerFastbootPicker("The headset is rebooting into its bootloader.");
         }
     } else {
         setStatus(`${step.title} — failed. See the log.`, "error");
+
+        // A fastboot step that ends with no bootloader attached failed because
+        // the device went away and could not be picked up again on its own.
+        // Offer the picker rather than leaving the user to find the button.
+        if (FASTBOOT_STEPS.includes(step.id) && !flow.fastboot?.opened) {
+            await offerFastbootPicker(
+                "The step stopped because the bootloader is no longer connected — it " +
+                    "leaves the bus whenever it restarts.",
+            );
+        }
     }
 }
 
