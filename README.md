@@ -33,15 +33,14 @@ npm run pin-pe-hash  # re-pin the extracted bootloader hash in flow.ts
 | 2 | Unpack the firmware, extract and patch the bootloader | — |
 | 3 | Read the boot slots | adb |
 | 4 | Get root via ionstack | adb, **typed confirmation** |
-| 5 | Back up all 13 partitions the flash step overwrites, into OPFS | root |
-| 6 | Re-read every backup and re-hash it against the device | root |
-| 7 | Write the 13 downgrade images, verifying each | root, **typed confirmation** |
-| 8 | Point bootctl at the downgraded slot | root, **typed confirmation**, offers revert |
-| 9 | Reboot into fastboot | adb |
-| 10 | Check build number, send the payload, request the unlock token | fastboot, **typed confirmation** |
-| 11 | Re-confirm unlock, `set_active` the original slot, restart the bootloader and read the switch back | fastboot |
-| 12 | Erase userdata so the downgraded slot boots clean | fastboot |
-| 13 | Reboot out of fastboot so Android marks the slot successful | fastboot |
+| 5 | Back up all 13 partitions the flash step overwrites into OPFS, then re-read and re-hash every one against the device | root |
+| 6 | Write the 13 downgrade images, verifying each | root, **typed confirmation** |
+| 7 | Point bootctl at the downgraded slot | root |
+| 8 | Reboot into fastboot | adb |
+| 9 | Check build number, send the payload, request the unlock token | fastboot, **typed confirmation** |
+| 10 | Re-confirm unlock, `set_active` the original slot, restart the bootloader and read the switch back | fastboot |
+| 11 | Erase userdata so the downgraded slot boots clean | fastboot |
+| 12 | Reboot out of fastboot so Android marks the slot successful | fastboot |
 
 The backup covers exactly the partitions the flash step overwrites — the 13 in
 the archive, no more and no less. Nothing is ever skipped: `checkPartitions`
@@ -282,6 +281,7 @@ that a wrong build is rejected.
 ## Requirements
 
 - Chromium browser (Chrome, Edge, Opera) — Firefox and Safari have no WebUSB.
+  Chrome on Android works too, with the phone as the USB host.
 - Secure context: `localhost` or `https`.
 - Developer Mode on; accept the RSA prompt in VR on first connect.
 - `adb kill-server`, and close SideQuest — nothing else may hold the interface.

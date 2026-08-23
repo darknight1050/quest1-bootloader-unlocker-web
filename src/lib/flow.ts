@@ -161,14 +161,9 @@ function unlockSteps(): Step[] {
         {
             id: "backup",
             title: "Back up the target slot",
-            detail: "Copy all 13 partitions into browser storage, hashing as they arrive.",
-            state: "pending",
-        },
-        {
-            id: "verify-backup",
-            title: "Re-verify the backup",
             detail:
-                "Read every image back out of storage and re-hash it against the live partition.",
+                "Copy all 13 partitions into browser storage, then read every image " +
+                "back out and re-hash it against the live partition.",
             state: "pending",
         },
         {
@@ -370,8 +365,6 @@ export class Flow {
                 return this.#stepRoot();
             case "backup":
                 return this.#stepBackup(step);
-            case "verify-backup":
-                return this.#stepVerifyBackup(step);
             case "flash":
                 return this.#stepFlash(step);
             case "activate":
@@ -637,6 +630,11 @@ export class Flow {
             `backup ${this.backup.id} holds all ${done} partitions and is marked complete`,
             "good",
         );
+
+        // Copying and checking are one step because a backup nobody has read
+        // back is not yet a backup: the hashes taken while writing say the
+        // bytes arrived, not that storage still holds them.
+        await this.#verifyBackup(step);
     }
 
     /**
@@ -703,7 +701,7 @@ export class Flow {
      * both to what was recorded during the copy and to a fresh hash of the
      * live partition. All three have to agree.
      */
-    async #stepVerifyBackup(step: Step): Promise<void> {
+    async #verifyBackup(step: Step): Promise<void> {
         const adb = this.#requireAdb();
         const target = slotSuffix(this.targetSlot!);
         const set = this.backup;

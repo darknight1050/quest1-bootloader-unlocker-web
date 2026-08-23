@@ -838,9 +838,9 @@ function webusbProblem(): WebusbProblem | undefined {
         body: [
             "Firefox and Safari do not implement WebUSB and have both declined to. " +
                 "There is no flag or extension that changes that.",
-            "Use a Chromium-based desktop browser — Chrome, Edge, Brave, Opera or " +
-                "Vivaldi. Chrome for Android has WebUSB too, but this tool needs to be " +
-                "the USB host, so it has to run on a computer.",
+            "Use a Chromium-based browser — Chrome, Edge, Brave, Opera or Vivaldi. " +
+                "Chrome on Android works too, as long as the phone is the USB host " +
+                "(a USB-C cable or an OTG adapter to the headset).",
             "If you are already in one of those, WebUSB can also be turned off by " +
                 "enterprise policy (WebUsbAllowDevicesForUrls / DefaultWebUsbGuardSetting) " +
                 "— check chrome://policy, or try a personal profile.",
@@ -1069,7 +1069,7 @@ async function runCurrentStep(): Promise<void> {
     const ok = await flow.runNext();
     if (ok) {
         setStatus(`${step.title} — done.`, "ok");
-        if (step.id === "backup" || step.id === "verify-backup") {
+        if (step.id === "backup") {
             await renderBackups();
         }
         if (step.id === "boot-os") {
