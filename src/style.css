@@ -132,6 +132,31 @@ main {
   }
 }
 
+header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.repo-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex: none;
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.8rem;
+}
+
+.repo-link:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
+
 h1 {
   font-size: 1.15rem;
   margin: 0 0 0.15rem;
