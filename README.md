@@ -1,5 +1,7 @@
 # Quest 1 Bootloader Unlocker (WebUSB)
 
+**<https://quest1-unlock.skystate.ch/>** — run it there, no install.
+
 Downgrades the inactive boot slot of a Meta Quest 1 to firmware
 `16476800119700000` (v29.0.0.66, 10 May 2021), boots it, and unlocks the
 bootloader through CVE-2021-1931 — all from a browser tab.
@@ -11,7 +13,7 @@ Stack: Vite + TypeScript, no framework.
 
 ```
 npm install
-npm run dev          # http://localhost:5173  (dev mode available)
+npm run dev          # http://localhost:5173
 npm run build        # typecheck + static bundle into dist/
 npm run verify       # re-derive the unlock payload from the real firmware
 npm run test-zip     # round-trip the backup archive through pack/unpack
@@ -125,8 +127,7 @@ not meaningful.
 `reboot-bootloader`, not `reboot-fastboot`: the latter enters *fastbootd*, which
 runs from userspace and never executes the vulnerable `abl` path.
 
-A manual **Reboot bootloader** button is also available on every fastboot step,
-including in dev mode.
+A manual **Reboot bootloader** button is also available on every fastboot step.
 
 ### Gates
 
@@ -171,55 +172,6 @@ edit the bundle they can edit the hashes with it. Serve over `https` or
 `localhost` — on a plain-HTTP deployment the bundled hashes are the only thing
 standing between a network attacker and a flashed payload, and the page warns
 when it is not on a secure origin.
-
-## Dev mode
-
-Only available when Vite is serving locally: `import.meta.env.DEV` gates it, the
-toggle is removed from a production build, `?dev=1` is ignored there, `Flow`
-throws if constructed in dev mode, and `sync-assets` leaves the dev payloads out
-of `dist` entirely.
-
-`binaries/dev/` is gitignored, so a fresh clone will not have it. That is not an
-error: `sync-assets` warns and carries on, the core flow is unaffected, and only
-dev mode for that device is unavailable. The hash stays pinned in
-`binaries/EXPECTED.sha256` and in the bundled manifest either way, so a payload
-someone does supply is still checked against the expected one.
-
-It exists to exercise the parts that do not need a Quest 1 — ionstack, the
-backup round-trip, and the fastboot lock-state read — on other hardware:
-
-| # | Step | What it does |
-| --- | --- | --- |
-| 1 | Identify | Picks the ionstack build from `ro.product.device` |
-| 2 | Get root | Runs that build with its own tuning, checks `id` in a fresh shell |
-| 3 | Enumerate partitions | Resolves the by-name directory, lists the inactive slot |
-| 4 | Back up | Round-trips every partition under the size cap through OPFS |
-| 5 | Re-verify | Re-reads them from storage and re-hashes against the device |
-| 6 | Reboot into fastboot | `adb reboot bootloader`, then re-grant USB access |
-| 7 | Read lock state | Parses `getvar:unlocked` and `oem device-info` |
-
-Step 6 is reversible and writes nothing — fastboot is only a boot mode, and
-`fastboot reboot` (or holding the power button) returns to Android. It exists so
-the reconnect-over-fastboot path, which is where the real flow is most likely to
-trip on Windows driver binding, gets exercised too.
-
-The size cap (default 256 MiB, adjustable in the dev banner) exists to keep a
-multi-gigabyte `super` out of browser storage — not to keep the rehearsal small.
-The real Quest 1 backup pulls a ~31 MiB `modem` and a ~29 MiB `boot`, so a cap
-that excluded a Quest 3's ~96 MiB `boot_b`/`vendor_boot_b` and ~100 MiB
-`recovery_b` would only ever exercise short transfers. Anything skipped is
-logged by name and size, and the step refuses to start if the selection will not
-fit in the available storage quota.
-
-Profiles live in `src/data/profiles.ts`. The Quest 1 build sprays memfd over one
-PFN range; the Quest 3 build sprays io_uring over two and holds the primitive
-for 300 s (`IONSTACK_KEEPER_HOLD_SEC`). They are not interchangeable, so the
-binary and its environment travel together and an unknown codename is refused
-rather than guessed at.
-
-Dev mode never writes a partition, never switches a slot and never unlocks
-anything — it is a separate step list, so those paths are not reachable rather
-than merely disabled. It also will not reboot the device into fastboot for you.
 
 ## Recovery
 
@@ -270,8 +222,8 @@ to delete still goes through the normal typed confirmation, because that is the
 moment someone is most likely to click through on autopilot.
 
 Each set also has a **Delete** button. How hard it asks depends on what is being
-thrown away: a dev rehearsal or a half-finished set is routine cleanup and gets
-a plain confirm, while a complete backup takes a typed phrase — and says so
+thrown away: a half-finished set is routine cleanup and gets a plain confirm,
+while a complete backup takes a typed phrase — and says so
 explicitly when it is the last complete backup stored for that headset, since
 deleting it removes the only way to undo a downgrade of that slot. There is no
 undo; save the zip first if you are unsure.
@@ -279,9 +231,11 @@ undo; save the zip first if you are unsure.
 ### Completeness
 
 Backup sets record the partitions they were meant to hold and are marked
-`complete` only once every one of them is stored. A set that stopped part-way, a
-dev-mode rehearsal subset, or a partial import is labelled in the list, warned
-about in the restore dialog, and can never be mistaken for a full device backup.
+`complete` only once every one of them is stored, and carry a `verifiedAt`
+timestamp only once every image has been read back out of storage and matched
+against the device. A set that stopped part-way or a partial import is labelled
+in the list, warned about in the restore dialog, and can never be mistaken for a
+full device backup.
 
 Backups live in the origin private file system under `backups/<serial>-<time>/`,
 with a `backup.json` manifest. `navigator.storage.persist()` is requested before
@@ -340,7 +294,6 @@ that a wrong build is rejected.
 
 ```
 binaries/           firmware archive + ionstack + bootctl_shim (mirrored into public/)
-binaries/dev/       dev-only payloads — gitignored, absent from a fresh clone
 native/             bootctl_shim.c and its trimmed AOSP headers
 scripts/verify-abl  payload derivation checked against the real firmware
 src/data/           versions.json, generated from the firmware archive manifest
