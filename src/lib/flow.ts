@@ -58,16 +58,10 @@ import {
     findByNameDir,
     flashPartition,
     getByNameDir,
-    listSlotPartitions,
     restorePartition,
     verifyBackup,
 } from "./partitions.js";
-import {
-    type DeviceProfile,
-    PROFILES,
-    QUEST1,
-    profileFor,
-} from "../data/profiles.js";
+import { type DeviceProfile, QUEST1 } from "../data/profiles.js";
 import { readSlotVerdict } from "./gpt.js";
 import { acquireRoot, isRoot, pushIonstack } from "./root.js";
 import { BackupSet, estimateQuota, requestPersistence } from "./storage.js";
@@ -96,27 +90,6 @@ export const EXPECTED_ABL_SHA256 =
  */
 export const EXPECTED_PE_SHA256 =
     "7663280938b54f8dc061b502f581cba4bea638473080c44a8dcfec88a570f74c";
-
-/**
- * `unlock` is the real procedure; `dev` is a read-only rehearsal.
- *
- * Dev mode exists to exercise ionstack, the backup pipeline and the fastboot
- * lock-state read on hardware that is not a Quest 1. It builds a different
- * step list rather than disabling buttons, so nothing that writes a partition
- * is reachable at all.
- */
-export type FlowMode = "unlock" | "dev";
-
-/**
- * Default size cap for dev-mode backups.
- *
- * The cap exists to keep a multi-gigabyte `super` out of browser storage, not
- * to keep the rehearsal small. The real Quest 1 backup pulls a ~31 MiB modem
- * and a ~29 MiB boot, so a cap that excluded the ~96 MiB boot/recovery/
- * vendor_boot partitions on a Quest 3 would only ever exercise the easy path
- * and never the long transfers that actually break.
- */
-export const DEV_MAX_PARTITION_BYTES = 256 * 1024 * 1024;
 
 export type StepState = "pending" | "running" | "done" | "failed" | "blocked";
 
@@ -245,79 +218,12 @@ function unlockSteps(): Step[] {
     ];
 }
 
-/**
- * Read-only rehearsal for non-Quest-1 hardware.
- *
- * Covers the three things worth exercising without a Quest 1 on the desk:
- * whether ionstack roots the device, whether the backup pipeline round-trips a
- * partition through OPFS with matching hashes, and whether the fastboot
- * lock-state read parses. Nothing here writes to a partition.
- */
-function devSteps(): Step[] {
-    return [
-        {
-            id: "dev-identify",
-            title: "Identify the device",
-            detail: "Read the fingerprint and pick the matching ionstack build.",
-            state: "pending",
-        },
-        {
-            id: "dev-root",
-            title: "Get root",
-            detail: "Run the device's ionstack, then check a new shell is uid 0.",
-            state: "pending",
-        },
-        {
-            id: "dev-partitions",
-            title: "Enumerate partitions",
-            detail: "Find the by-name directory and list the inactive slot.",
-            state: "pending",
-        },
-        {
-            id: "dev-backup",
-            title: "Back up partitions",
-            detail: "Round-trip every partition under the size cap through browser storage.",
-            state: "pending",
-        },
-        {
-            id: "dev-verify",
-            title: "Re-verify the backup",
-            detail: "Re-read every image from storage and re-hash against the device.",
-            state: "pending",
-        },
-        {
-            id: "dev-bootloader",
-            title: "Reboot into fastboot",
-            detail: "Restart the device into its bootloader. Reversible: fastboot reboot.",
-            state: "pending",
-        },
-        {
-            id: "dev-fastboot",
-            title: "Read the fastboot lock state",
-            detail: "Parse getvar:unlocked and oem device-info. Reads only.",
-            state: "pending",
-        },
-        {
-            id: "dev-reboot-bootloader",
-            title: "Reboot the bootloader and reconnect",
-            detail:
-                "Exercise reboot-bootloader plus the automatic reconnect the unlock relies on.",
-            state: "pending",
-        },
-    ];
-}
-
 export class Flow {
     readonly steps: Step[];
-    readonly mode: FlowMode;
     readonly #events: FlowEvents;
 
     /** Which device we are talking to; decides the ionstack build and tuning. */
     profile: DeviceProfile = QUEST1;
-    /** Partitions dev mode backed up, with their sizes. */
-    devPartitions: Map<string, number> = new Map();
-    /** Dev-mode size cap; adjustable from the UI. */
-    devMaxPartitionBytes = DEV_MAX_PARTITION_BYTES;
 
     adb: Adb | undefined;
     identity: DeviceIdentity | undefined;
@@ -339,15 +245,9 @@ export class Flow {
 
     #index = 0;
 
-    constructor(events: FlowEvents, mode: FlowMode = "unlock") {
-        if (mode === "dev" && !import.meta.env.DEV) {
-            // The dev payloads are not shipped in a production build, so the
-            // rehearsal flow could not run even if something reached for it.
-            throw new Error("dev mode is only available when running locally");
-        }
+    constructor(events: FlowEvents) {
         this.#events = events;
-        this.mode = mode;
-        this.steps = mode === "dev" ? devSteps() : unlockSteps();
+        this.steps = unlockSteps();
     }
 
     get current(): Step | undefined {
@@ -486,22 +386,6 @@ export class Flow {
                 return this.#stepFactoryReset();
             case "boot-os":
                 return this.#stepBootOs();
-            case "dev-identify":
-                return this.#devIdentify();
-            case "dev-root":
-                return this.#devRoot();
-            case "dev-partitions":
-                return this.#devPartitions();
-            case "dev-backup":
-                return this.#devBackup(step);
-            case "dev-verify":
-                return this.#devVerify(step);
-            case "dev-bootloader":
-                return this.#devBootloader();
-            case "dev-fastboot":
-                return this.#devFastboot();
-            case "dev-reboot-bootloader":
-                return this.#devRebootBootloader();
             default:
                 throw new Error(`unknown step ${step.id}`);
         }
@@ -548,371 +432,6 @@ export class Flow {
         this.profile = QUEST1;
         await findByNameDir(adb, this.profile.byNameDirs);
         this.#log(`by-name directory: ${getByNameDir()}`);
-    }
-
-    // -------------------------------------------------------------- dev mode
-
-    async #devIdentify(): Promise<void> {
-        const adb = this.#requireAdb();
-        const identity = await identify(adb);
-        this.identity = identity;
-
-        this.#log(`fingerprint: ${identity.fingerprint}`);
-        this.#log(
-            `device: ${identity.model} (${identity.device}), Android ${identity.release}`,
-        );
-        this.#log(`slot: ${identity.slotSuffix || "(none reported)"}`);
-
-        const profile = profileFor(identity.device);
-        if (!profile) {
-            throw new Error(
-                `no ionstack build is known for "${identity.device}". Dev mode supports ` +
-                    `${PROFILES.map((p) => p.codenames[0]).join(", ")}; another kernel would ` +
-                    "need its own tuning, and running the wrong one just crashes the device.",
-            );
-        }
-        this.profile = profile;
-
-        this.gates = [
-            {
-                status: "ok",
-                title: `Profile: ${profile.label}`,
-                detail: `Using ${profile.ionstack} with ${Object.keys(profile.ionstackEnv).length} tuning variables.`,
-            },
-            profile.allowWrites
-                ? {
-                      status: "warn",
-                      title: "This device supports the real flow",
-                      detail:
-                          "Dev mode stays read-only regardless. Turn it off to run the " +
-                          "actual unlock procedure.",
-                  }
-                : {
-                      status: "ok",
-                      title: "Read-only on this device",
-                      detail:
-                          "No downgrade images or bootloader patch exist for it here, so " +
-                          "dev mode never writes a partition.",
-                  },
-        ];
-
-        const suffix = identity.slotSuffix;
-        if (suffix === "_a" || suffix === "_b") {
-            this.originalSlot = suffix === "_a" ? 0 : 1;
-            this.targetSlot = this.originalSlot === 0 ? 1 : 0;
-            this.#log(
-                `active slot ${suffix}, will read from ${slotSuffix(this.targetSlot)}`,
-                "good",
-            );
-        } else {
-            this.#log(
-                `ro.boot.slot_suffix is ${JSON.stringify(suffix)}; not an A/B device, ` +
-                    "so the backup steps have nothing to read",
-                "warn",
-            );
-        }
-    }
-
-    async #devRoot(): Promise<void> {
-        const adb = this.#requireAdb();
-
-        const ionstack = await this.#fetchAsset(
-            this.profile.ionstack,
-            `ionstack build for ${this.profile.label}`,
-        );
-        this.#log(
-            `${this.profile.ionstack} — ${ionstack.length} bytes, sha256 ${await sha256(ionstack)}`,
-        );
-        await pushIonstack(adb, ionstack);
-
-        const rooted = await acquireRoot(adb, {
-            profile: this.profile,
-            onLine: (line) => this.#log(line),
-        });
-        if (!rooted) {
-            throw new Error(
-                `ionstack did not produce a root shell on ${this.profile.label}. ` +
-                    "Nothing was written; reboot and try again.",
-            );
-        }
-        this.#log("root shell confirmed", "good");
-    }
-
-    async #devPartitions(): Promise<void> {
-        const adb = this.#requireAdb();
-        if (this.targetSlot === undefined) {
-            throw new Error(
-                "this device reported no slot suffix, so there is no inactive slot to read",
-            );
-        }
-
-        const dir = await findByNameDir(adb, this.profile.byNameDirs);
-        this.#log(`by-name directory: ${dir}`, "good");
-
-        const target = slotSuffix(this.targetSlot);
-        const all = await listSlotPartitions(adb, target);
-        if (all.size === 0) {
-            throw new Error(`no partitions ending in ${target} under ${dir}`);
-        }
-
-        // Mirror the real overwrite set where this device has the same
-        // partitions, so the rehearsal exercises the same workload rather than
-        // an arbitrary selection.
-        const mirrored = new Map<string, number>();
-        for (const name of PARTITIONS) {
-            const size = all.get(name);
-            if (size !== undefined) {
-                mirrored.set(name, size);
-            }
-        }
-        const candidates = mirrored.size > 0 ? mirrored : all;
-        this.#log(
-            mirrored.size > 0
-                ? `${mirrored.size} of the ${PARTITIONS.length} partitions the real flow ` +
-                      "overwrites exist here; rehearsing on those"
-                : "this device shares no partition names with the Quest 1 overwrite set; " +
-                      "rehearsing on whatever fits instead",
-        );
-
-        const cap = this.devMaxPartitionBytes;
-        const selected = new Map<string, number>();
-        const skipped: string[] = [];
-        for (const [name, size] of candidates) {
-            if (size <= cap) {
-                selected.set(name, size);
-            } else {
-                skipped.push(`${name}${target} (${(size / 1048576).toFixed(0)} MiB)`);
-            }
-        }
-
-        this.devPartitions = selected;
-
-        const totalBytes = [...selected.values()].reduce((sum, size) => sum + size, 0);
-        this.#log(
-            `${candidates.size} candidates on ${target}; ${selected.size} within the ` +
-                `${(cap / 1048576).toFixed(0)} MiB cap, ${(totalBytes / 1048576).toFixed(1)} MiB to transfer`,
-        );
-        for (const [name, size] of selected) {
-            const label =
-                size >= 1048576
-                    ? `${(size / 1048576).toFixed(1)} MiB`
-                    : `${(size / 1024).toFixed(0)} KiB`;
-            this.#log(`  ${name}${target}  ${label}`);
-        }
-        if (skipped.length > 0) {
-            this.#log(
-                `over the cap, not backed up: ${skipped.join(", ")}. Raise the cap if you ` +
-                    "want the rehearsal to cover transfers this size.",
-                "warn",
-            );
-        }
-        if (selected.size === 0) {
-            throw new Error(
-                `every partition on ${target} is over the ${(cap / 1048576).toFixed(0)} MiB cap`,
-            );
-        }
-
-        // With the cap high enough to include boot and recovery this is no
-        // longer a trivial amount of data, so check it will actually fit.
-        const { usage, quota } = await estimateQuota();
-        if (quota > 0) {
-            const free = quota - usage;
-            this.#log(
-                `browser storage: ${(usage / 1048576).toFixed(0)} MiB used of ` +
-                    `${(quota / 1048576).toFixed(0)} MiB, ${(free / 1048576).toFixed(0)} MiB free`,
-            );
-            if (totalBytes > free) {
-                throw new Error(
-                    `this backup needs ${(totalBytes / 1048576).toFixed(0)} MiB but only ` +
-                        `${(free / 1048576).toFixed(0)} MiB of browser storage is available. ` +
-                        "Lower the size cap or clear old backups.",
-                );
-            }
-        }
-    }
-
-    async #devBackup(step: Step): Promise<void> {
-        const adb = this.#requireAdb();
-        const identity = this.identity!;
-        const target = slotSuffix(this.targetSlot!);
-
-        if (!(await isRoot(adb))) {
-            throw new Error("the shell is no longer root; re-run the root step");
-        }
-
-        const persisted = await requestPersistence();
-        this.#log(
-            persisted
-                ? "browser storage marked persistent"
-                : "browser did NOT grant persistent storage",
-            persisted ? "good" : "warn",
-        );
-
-        this.backup = await BackupSet.create(
-            {
-                serial: adb.serial,
-                fingerprint: identity.fingerprint,
-                slotSuffix: identity.slotSuffix,
-                targetSlot: target,
-                mode: "dev",
-                // Deliberately a subset: a rehearsal set is never a device backup.
-                expected: [...this.devPartitions.keys()].map((name) =>
-                    backupEntryName(name, target),
-                ),
-            },
-            new Date().toISOString(),
-        );
-
-        const entries = [...this.devPartitions.entries()];
-        let done = 0;
-        for (const [name, size] of entries) {
-            const hash = await backupPartition(adb, this.backup, name, target, size, (p) => {
-                this.#progress(
-                    step,
-                    `${p.phase} ${p.partition}${target} (${done + 1}/${entries.length})`,
-                    p.transferred,
-                    p.total,
-                );
-            });
-            done++;
-            this.#log(`  ${name}${target}  ${size} bytes  ${hash}`, "good");
-        }
-
-        this.#log(
-            `rehearsal backup ${this.backup.id} stored ${done} partitions. It is a ` +
-                "dev-mode subset and is NOT marked complete — it cannot restore a device.",
-            "warn",
-        );
-    }
-
-    async #devVerify(step: Step): Promise<void> {
-        const adb = this.#requireAdb();
-        const target = slotSuffix(this.targetSlot!);
-        const set = this.backup;
-        if (!set) {
-            throw new Error("no backup to verify — run the backup step first");
-        }
-
-        const problems: string[] = [];
-        const names = [...this.devPartitions.keys()];
-        let done = 0;
-
-        for (const name of names) {
-            this.#progress(step, `verifying ${name}${target}`, done, names.length);
-            const { stored, device, recorded } = await verifyBackup(adb, set, name, target);
-            if (stored !== recorded) {
-                problems.push(
-                    `${name}${target}: storage returned ${stored}, recorded ${recorded}`,
-                );
-            } else if (stored !== device) {
-                problems.push(`${name}${target}: backup ${stored}, partition now ${device}`);
-            } else {
-                this.#log(`  ${name}${target}  re-verified ${stored}`, "good");
-            }
-            done++;
-            this.#progress(step, `verifying ${name}${target}`, done, names.length);
-        }
-
-        if (problems.length > 0) {
-            throw new Error(`backup round-trip failed:\n${problems.join("\n")}`);
-        }
-        await set.markVerified(new Date().toISOString());
-        this.#log(
-            `all ${names.length} images round-tripped through storage with matching hashes`,
-            "good",
-        );
-    }
-
-    /**
-     * Reboots into the bootloader.
-     *
-     * Safe in dev mode: fastboot is just a boot mode, and `fastboot reboot`
-     * (or holding the power button) puts the device back into Android. Nothing
-     * is written and no slot is touched.
-     */
-    async #devBootloader(): Promise<void> {
-        const adb = this.#requireAdb();
-        this.#log(`rebooting ${this.profile.label} into the bootloader`);
-        await adb.power.bootloader().catch(() => shell(adb, "reboot bootloader"));
-        this.adb = undefined;
-        this.#log(
-            "device is rebooting — it comes back as a different USB device, so grant " +
-                "access to the fastboot one when the picker appears",
-            "warn",
-        );
-        this.#log(
-            "to get back to Android afterwards: fastboot reboot, or hold the power button",
-        );
-    }
-
-    async #devFastboot(): Promise<void> {
-        const device = this.fastboot;
-        if (!device?.opened) {
-            throw new Error(
-                "connect the bootloader over fastboot first — use the button above once " +
-                    "the device has finished rebooting",
-            );
-        }
-
-        const state = await readUnlockState(device);
-        this.unlockState = state;
-        for (const [key, value] of Object.entries(state.evidence)) {
-            this.#log(`  ${key} = ${value}`);
-        }
-        if (state.linkLost) {
-            throw new Error(
-                "the bootloader left the bus mid-read, so nothing could be parsed. " +
-                    "Reconnect with the button above and run this step again.",
-            );
-        }
-        if (Object.keys(state.evidence).length === 0) {
-            throw new Error(
-                "the bootloader answered neither getvar:unlocked nor oem device-info",
-            );
-        }
-        this.#log(
-            `parsed lock state: ${state.unlocked ? "UNLOCKED" : "LOCKED"}`,
-            state.unlocked ? "good" : "info",
-        );
-    }
-
-    /**
-     * Rehearses the reboot-and-reconnect cycle the unlock step performs
-     * automatically after sending the payload.
-     *
-     * Worth exercising on its own: it is the one place the tool has to survive
-     * the USB device disappearing and coming back, which is exactly where
-     * driver binding and permission handling tend to go wrong.
-     */
-    async #devRebootBootloader(): Promise<void> {
-        const device = this.fastboot;
-        if (!device?.opened) {
-            throw new Error("connect the bootloader over fastboot first");
-        }
-
-        const before = await readUnlockState(device);
-        this.#log(`lock state before: ${before.unlocked ? "UNLOCKED" : "LOCKED"}`);
-
-        this.fastboot = await rebootToBootloader(device, {
-            onLog: (line) => this.#log(line),
-        });
-
-        const after = await readUnlockState(this.fastboot);
-        for (const [key, value] of Object.entries(after.evidence)) {
-            this.#log(`  ${key} = ${value}`);
-        }
-        this.#log(
-            `reconnected after reboot; lock state ${after.unlocked ? "UNLOCKED" : "LOCKED"}`,
-            "good",
-        );
-
-        if (before.unlocked !== after.unlocked) {
-            this.#log(
-                "the lock state changed across the reboot, which should not happen on a " +
-                    "device nothing was done to",
-                "warn",
-            );
-        }
     }
 
     async #stepAssets(): Promise<void> {

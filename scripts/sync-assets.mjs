@@ -11,25 +11,14 @@
 //      swapping a file in public/ (or in transit) is caught before the bytes
 //      reach the headset. The manifest is deliberately not fetched at runtime;
 //      if it were, an attacker able to swap a payload could swap it too.
-//
-// Pass --with-dev (npm run dev) to include the dev-only payloads. Without it
-// (npm run build) the dev directory is removed, so a production bundle can
-// never ship the Quest 3 ionstack or reach the read-only rehearsal flow.
-//
-// binaries/dev/ is gitignored, so a fresh clone will not have it. Its absence
-// is a warning, not an error: the core flow does not need it, and only dev
-// mode on that device is unavailable. Its hash still ships in the manifest, so
-// the file cannot be swapped for a different one if someone does supply it.
 import { createHash } from "node:crypto";
 import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-const CORE = ["16476800119700000.zip", "ionstack", "bootctl_shim"];
-const DEV = ["dev/ionstack-quest3"];
+const ASSETS = ["16476800119700000.zip", "ionstack", "bootctl_shim"];
 const EXPECTED_FILE = join("binaries", "EXPECTED.sha256");
 const MANIFEST_FILE = join("src", "data", "asset-hashes.json");
 
-const withDev = process.argv.includes("--with-dev");
 const regenerate = process.argv.includes("--regenerate");
 
 async function sha256(path) {
@@ -54,18 +43,13 @@ async function readExpected() {
     return expected;
 }
 
-// Every known payload is checked and pinned, whether or not it gets published.
-// Keeping the manifest identical between a dev and a production build means the
-// committed file does not churn; an unpublished URL simply 404s at runtime.
-const names = [...CORE, ...DEV];
-const publish = new Set(withDev ? names : CORE);
 const manifest = {};
 let failed = false;
 
 if (regenerate) {
     const previous = await readExpected().catch(() => new Map());
     const lines = [];
-    for (const name of [...CORE, ...DEV]) {
+    for (const name of ASSETS) {
         const from = join("binaries", name);
         const present = await stat(from).catch(() => undefined);
         if (present) {
@@ -98,7 +82,7 @@ if (regenerate) {
 
 const expected = await readExpected();
 
-for (const name of names) {
+for (const name of ASSETS) {
     const from = join("binaries", name);
     const to = join("public", "binaries", name);
 
@@ -109,16 +93,10 @@ for (const name of names) {
         continue;
     }
 
-    // Pin the hash whether or not the file is here, so the manifest stays
-    // identical across checkouts and a supplied file is still checked.
     manifest[`/binaries/${name}`] = want;
 
     const source = await stat(from).catch(() => undefined);
     if (!source) {
-        if (DEV.includes(name)) {
-            console.warn(`${from} is absent (gitignored) — dev mode for it is unavailable`);
-            continue;
-        }
         console.error(`missing ${from} — the app cannot run without it`);
         failed = true;
         continue;
@@ -136,10 +114,6 @@ for (const name of names) {
         continue;
     }
 
-    if (!publish.has(name)) {
-        continue;
-    }
-
     const target = await stat(to).catch(() => undefined);
     if (!target || target.size !== source.size || target.mtimeMs < source.mtimeMs) {
         await mkdir(dirname(to), { recursive: true });
@@ -153,10 +127,8 @@ if (failed) {
     process.exit(1);
 }
 
-if (!withDev) {
-    await rm(join("public", "binaries", "dev"), { recursive: true, force: true });
-    console.log("dev payloads excluded from this build");
-}
+// Left over from when a dev-only payload was published alongside the rest.
+await rm(join("public", "binaries", "dev"), { recursive: true, force: true });
 
 await writeFile(
     MANIFEST_FILE,

@@ -33,7 +33,7 @@ export interface BackupSetMeta {
     /**
      * True only once every expected partition has been stored and verified.
      *
-     * A dev-mode rehearsal, or a run that was interrupted, leaves this false.
+     * A run that was interrupted part-way leaves this false.
      * Such a set must never be mistaken for something you can restore a device
      * from, so it is marked at rest rather than inferred later.
      */
@@ -47,7 +47,12 @@ export interface BackupSetMeta {
      * set is, and what a set becomes again the moment an entry is replaced.
      */
     readonly verifiedAt?: string;
-    /** Which flow produced it. */
+    /**
+     * Which flow produced it.
+     *
+     * Only the unlock flow writes backups now; sets written by the old
+     * read-only rehearsal may still carry `"dev"` on disk.
+     */
     readonly mode: "unlock" | "dev";
 }
 
@@ -154,9 +159,9 @@ export class BackupSet {
     /**
      * Records that every image in the set has been re-read and matched.
      *
-     * The caller decides what "every" means — the unlock flow checks all
-     * thirteen, a dev rehearsal only its subset — so this makes no claim about
-     * coverage. That is what {@link BackupSetMeta.complete} is for.
+     * It makes no claim about coverage — that is what
+     * {@link BackupSetMeta.complete} is for — only that everything the set
+     * does hold was read back and matched.
      */
     async markVerified(when: string): Promise<void> {
         this.#meta = { ...this.#meta, verifiedAt: when };

@@ -28,7 +28,7 @@ export interface RestoreEvents {
 /**
  * Splits `abl_b.img` into its partition name and slot suffix.
  *
- * Any partition name is accepted, not just the Quest 1 set, because dev-mode
+ * Any partition name is accepted, not just the Quest 1 set, because imported
  * backups cover whatever the device happened to expose.
  */
 export function parseEntryName(

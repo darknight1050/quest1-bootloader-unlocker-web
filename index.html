@@ -28,27 +28,6 @@
               <button id="disconnect" type="button" class="ghost" disabled>
                 Disconnect
               </button>
-              <label class="check" title="Read-only rehearsal on non-Quest-1 hardware">
-                <input id="dev-mode" type="checkbox" />
-                Dev mode
-              </label>
-            </div>
-            <div id="dev-banner" class="dev-banner" hidden>
-              <p>
-                <strong>Dev mode.</strong> Read-only rehearsal: ionstack, the backup
-                round-trip, and the fastboot lock-state read. No partition is
-                written, no slot is switched, no bootloader is unlocked.
-              </p>
-              <label class="dev-cap">
-                Back up partitions up to
-                <input id="dev-cap" type="number" min="1" max="4096" step="1" value="256" />
-                MiB
-                <span class="hint">
-                  keeps a multi-GB <code>super</code> out; 256 covers
-                  <code>boot</code>, <code>recovery</code> and
-                  <code>vendor_boot</code>
-                </span>
-              </label>
             </div>
             <p id="status" class="status idle">Checking WebUSB support…</p>
             <div id="unsupported" class="unsupported" hidden></div>

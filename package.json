@@ -23,7 +23,7 @@
   "author": "darknight1050",
   "type": "module",
   "scripts": {
-    "dev": "node scripts/sync-assets.mjs --with-dev && vite",
+    "dev": "node scripts/sync-assets.mjs && vite",
     "build": "node scripts/sync-assets.mjs && tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -32,7 +32,7 @@
     "test-zip": "node scripts/test-zip-roundtrip.mjs",
     "test-gpt": "tsx scripts/test-gpt.ts",
     "test-controls": "node scripts/test-backup-controls.mjs",
-    "sync-assets": "node scripts/sync-assets.mjs --with-dev",
+    "sync-assets": "node scripts/sync-assets.mjs",
     "hash-assets": "node scripts/sync-assets.mjs --regenerate",
     "pin-pe-hash": "tsx scripts/pin-pe-hash.ts"
   },

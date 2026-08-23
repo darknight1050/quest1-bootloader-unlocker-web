@@ -8,7 +8,7 @@ import {
 import { fetchAsset } from "./lib/assets.js";
 import { DEVICE, DOWNGRADE_TARGET, identify } from "./lib/device.js";
 import { FastbootDevice, rebootToBootloader } from "./lib/fastboot.js";
-import { Flow, type Confirmation, type FlowMode } from "./lib/flow.js";
+import { Flow, type Confirmation } from "./lib/flow.js";
 import { planRestore, runRestore } from "./lib/restore.js";
 import {
     BackupSet,
@@ -56,9 +56,6 @@ const dialogOk = $<HTMLButtonElement>("confirm-ok");
 const dialogCancel = $<HTMLButtonElement>("confirm-cancel");
 const dialogRevert = $<HTMLButtonElement>("confirm-revert");
 
-const devModeToggle = $<HTMLInputElement>("dev-mode");
-const devBanner = $<HTMLDivElement>("dev-banner");
-const devCapInput = $<HTMLInputElement>("dev-cap");
 const noticeDialog = $<HTMLDialogElement>("notice-dialog");
 const noticeHeading = $<HTMLHeadingElement>("notice-heading");
 const noticeBody = $<HTMLDivElement>("notice-body");
@@ -71,22 +68,7 @@ let busy = false;
 
 const flowEvents = { onLog: log, onChange: render };
 
-/**
- * Dev mode exists only when Vite is serving locally.
- *
- * `import.meta.env.DEV` is substituted at build time, so in a production
- * bundle this is a literal `false`: the toggle is removed, the `?dev` param is
- * ignored, and the Quest 3 payload is not even shipped (see sync-assets).
- */
-const DEV_AVAILABLE = import.meta.env.DEV;
-
-/** Read from the URL so a dev-mode session can be bookmarked. */
-const initialMode: FlowMode =
-    DEV_AVAILABLE && new URLSearchParams(location.search).get("dev") !== null
-        ? "dev"
-        : "unlock";
-
-let flow = new Flow(flowEvents, initialMode);
+let flow = new Flow(flowEvents);
 
 function log(message: string, kind: "info" | "warn" | "error" | "good" = "info"): void {
     const time = new Date().toLocaleTimeString();
@@ -373,11 +355,7 @@ async function renderBackups(): Promise<void> {
 
         const badge = document.createElement("span");
         badge.className = complete ? "badge badge-complete" : "badge badge-incomplete";
-        badge.textContent = complete
-            ? "complete"
-            : set.mode === "dev"
-              ? "dev rehearsal"
-              : "incomplete";
+        badge.textContent = complete ? "complete" : "incomplete";
         title.append(badge);
 
         // Separate from completeness: one says how much is here, the other
@@ -406,11 +384,8 @@ async function renderBackups(): Promise<void> {
             const warning = document.createElement("span");
             warning.className = "step-error";
             warning.textContent =
-                set.mode === "dev"
-                    ? "Dev-mode rehearsal: a deliberate subset, not a device backup. " +
-                      "Restoring it would leave the other partitions untouched."
-                    : `Incomplete: holds ${set.entries.length} of ${set.expected?.length ?? "?"} ` +
-                      "partitions. Restoring it will not fully recover the slot.";
+                `Incomplete: holds ${set.entries.length} of ${set.expected?.length ?? "?"} ` +
+                "partitions. Restoring it will not fully recover the slot.";
             box.append(warning);
         }
 
@@ -549,8 +524,8 @@ async function offerBackupCleanup(): Promise<void> {
 /**
  * Deletes a stored backup, asking first.
  *
- * How hard it asks depends on what is being thrown away. A dev rehearsal or a
- * half-finished set is routine cleanup and gets a plain confirm; a complete
+ * How hard it asks depends on what is being thrown away. A half-finished set
+ * is routine cleanup and gets a plain confirm; a complete
  * backup may be the only way to undo a downgrade, so it takes a typed phrase —
  * and says so louder if it is the last complete backup for that headset.
  */
@@ -572,11 +547,8 @@ async function confirmDelete(
         await showNotice(
             "Delete this backup?",
             [
-                set.mode === "dev"
-                    ? `A dev-mode rehearsal set from ${taken}. It is a deliberate subset and ` +
-                      "cannot restore a device, so removing it loses nothing."
-                    : `An incomplete set from ${taken}, holding ${set.entries.length} of ` +
-                      `${set.expected?.length ?? "?"} partitions. It cannot fully restore a slot.`,
+                `An incomplete set from ${taken}, holding ${set.entries.length} of ` +
+                    `${set.expected?.length ?? "?"} partitions. It cannot fully restore a slot.`,
                 "This cannot be undone.",
             ],
             { label: "Delete permanently", run: () => (confirmed = true) },
@@ -642,12 +614,9 @@ async function startRestore(id: string): Promise<void> {
         }
         if (!plan.meta.complete) {
             body.push(
-                plan.meta.mode === "dev"
-                    ? "WARNING: this is a dev-mode rehearsal subset, not a device backup. " +
-                          "The partitions it does not contain will keep whatever is on them now."
-                    : `WARNING: this backup is marked incomplete — it holds ` +
-                          `${plan.items.length} of ${plan.meta.expected?.length ?? "?"} partitions. ` +
-                          "Restoring it will not fully recover the slot.",
+                `WARNING: this backup is marked incomplete — it holds ${plan.items.length} ` +
+                    `of ${plan.meta.expected?.length ?? "?"} partitions. Restoring it will ` +
+                    "not fully recover the slot.",
             );
         }
         if (!plan.meta.verifiedAt) {
@@ -1106,7 +1075,7 @@ async function runCurrentStep(): Promise<void> {
         if (step.id === "boot-os") {
             await offerBackupCleanup();
         }
-        if (step.id === "bootloader" || step.id === "dev-bootloader") {
+        if (step.id === "bootloader") {
             setStatus("Headset is rebooting into fastboot.", "warn");
             await showNotice(
                 "Reconnect over fastboot",
@@ -1118,12 +1087,6 @@ async function runCurrentStep(): Promise<void> {
                         "in the picker. On Windows that interface must also be bound to " +
                         "WinUSB, separately from the ADB one.",
                     "If no device appears, unplug and replug the cable and try again.",
-                    ...(flow.mode === "dev"
-                        ? [
-                              "Nothing has been written and no slot was changed. To go back " +
-                                  "to Android: fastboot reboot, or hold the power button.",
-                          ]
-                        : []),
                 ],
                 { label: "Choose the fastboot device", run: connectFastboot },
             );
@@ -1142,54 +1105,6 @@ retryStepButton.addEventListener("click", () => {
     if (!step) return;
     flow.reset(step.id);
     void withBusy(runCurrentStep);
-});
-
-devModeToggle.addEventListener("change", () => {
-    if (!DEV_AVAILABLE) {
-        devModeToggle.checked = false;
-        return;
-    }
-    const mode: FlowMode = devModeToggle.checked ? "dev" : "unlock";
-    if (mode === flow.mode) return;
-
-    // Switching mode restarts the procedure; carry the live connections over
-    // so the user does not have to re-grant USB permission.
-    const { adb, fastboot, devMaxPartitionBytes } = flow;
-    flow = new Flow(flowEvents, mode);
-    flow.adb = adb;
-    flow.fastboot = fastboot;
-    flow.devMaxPartitionBytes = devMaxPartitionBytes;
-
-    devBanner.hidden = mode !== "dev";
-    const url = new URL(location.href);
-    if (mode === "dev") {
-        url.searchParams.set("dev", "1");
-    } else {
-        url.searchParams.delete("dev");
-    }
-    history.replaceState(null, "", url);
-
-    log(
-        mode === "dev"
-            ? "dev mode on — read-only rehearsal, nothing will be written"
-            : "dev mode off — the real unlock procedure",
-        "warn",
-    );
-    setStatus(
-        mode === "dev" ? "Dev mode: read-only." : "Unlock mode.",
-        mode === "dev" ? "warn" : "idle",
-    );
-    render();
-});
-
-devCapInput.addEventListener("change", () => {
-    const mib = Number(devCapInput.value);
-    if (!Number.isFinite(mib) || mib < 1) {
-        devCapInput.value = String(flow.devMaxPartitionBytes / 1048576);
-        return;
-    }
-    flow.devMaxPartitionBytes = Math.round(mib) * 1048576;
-    log(`dev backup size cap set to ${Math.round(mib)} MiB`, "warn");
 });
 
 importBackupButton.addEventListener("click", () => importFilesInput.click());
@@ -1281,21 +1196,12 @@ copyLogButton.addEventListener("click", () => {
 // --------------------------------------------------------------- start-up
 
 void (async () => {
-    if (!DEV_AVAILABLE) {
-        // Remove the control rather than disabling it: there is nothing behind
-        // it in a production build.
-        devModeToggle.closest("label")?.remove();
-    }
-    devModeToggle.checked = initialMode === "dev";
-    devBanner.hidden = initialMode !== "dev";
-    devCapInput.value = String(flow.devMaxPartitionBytes / 1048576);
     render();
     await renderBackups();
 
     const problem = webusbProblem();
     if (problem) {
         webusbBlocked = true;
-        devModeToggle.disabled = true;
         render();
         showUnsupported(problem);
         setStatus(problem.heading, "error");

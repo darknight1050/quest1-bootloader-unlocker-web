@@ -215,15 +215,6 @@ button.ghost {
   }
 }
 
-.check {
-  font-size: 0.85rem;
-  color: var(--muted);
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  margin-left: auto;
-}
-
 .status {
   margin: 0.7rem 0 0;
   font-size: 0.875rem;
@@ -607,55 +598,12 @@ pre#log {
   margin-bottom: 0;
 }
 
-.dev-banner {
-  margin: 0.9rem 0 0;
-  padding: 0.6rem 0.75rem;
-  border: 1px dashed var(--warn);
-  border-radius: 8px;
-  color: var(--warn);
-  font-size: 0.82rem;
-  line-height: 1.5;
-}
-
-.dev-banner strong {
-  color: var(--warn);
-}
-
 #notice-dialog h2 {
   color: var(--accent);
 }
 
 #notice-action {
   background: var(--accent);
-}
-
-.dev-banner p {
-  margin: 0 0 0.6rem;
-  color: inherit;
-}
-
-.dev-cap {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  font-size: 0.82rem;
-}
-
-.dev-cap input {
-  width: 5.5rem;
-  font: inherit;
-  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
-  padding: 0.25rem 0.4rem;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: #0d0f12;
-  color: var(--fg);
-}
-
-.dev-cap .hint {
-  flex-basis: 100%;
-  color: var(--muted);
 }
 
 .backup-import {

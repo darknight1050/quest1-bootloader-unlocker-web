@@ -38,10 +38,10 @@ export const PARTITIONS = [
 
 export type PartitionName = (typeof PARTITIONS)[number];
 
-/** Backups in dev mode cover partitions outside the Quest 1 set. */
+/** Imported backups may hold partitions outside the Quest 1 set. */
 export type AnyPartition = PartitionName | (string & {});
 
-/** Quest 1 layout; other devices are discovered with `findByNameDir`. */
+/** Usual Quest 1 layout; confirmed at runtime by `findByNameDir`. */
 export const BY_NAME = "/dev/block/bootdevice/by-name";
 export const BACKUP_DIR = `${WORKDIR}/backup`;
 export const IMAGE_DIR = `${WORKDIR}/img`;
@@ -60,9 +60,9 @@ export function getByNameDir(): string {
 /**
  * Finds the by-name directory, trying the profile's candidates in order.
  *
- * The Quest 1 keeps them under `bootdevice`, the Quest 3 directly under
- * `/dev/block`. Guessing wrong means every later path is wrong, so this
- * resolves it once and loudly.
+ * The Quest 1 keeps them under `bootdevice`, but not every build does.
+ * Guessing wrong means every later path is wrong, so this resolves it once and
+ * loudly.
  */
 export async function findByNameDir(
     adb: Adb,
@@ -78,30 +78,6 @@ export async function findByNameDir(
     throw new Error(
         `none of these by-name directories exist or are readable: ${candidates.join(", ")}`,
     );
-}
-
-/** Every partition present on a slot, with its size in bytes. */
-export async function listSlotPartitions(
-    adb: Adb,
-    slotSuffix: string,
-): Promise<Map<string, number>> {
-    const listing = await shellOk(adb, `ls ${byNameDir}`);
-    const names: string[] = listing
-        .split(/\s+/)
-        .map((name: string) => name.trim())
-        .filter((name: string) => name.endsWith(slotSuffix))
-        .map((name: string) => name.slice(0, -slotSuffix.length))
-        .filter((name: string) => name.length > 0);
-
-    const sizes = new Map<string, number>();
-    for (const name of [...new Set(names)].sort()) {
-        try {
-            sizes.set(name, await partitionSize(adb, name, slotSuffix));
-        } catch {
-            // Unreadable entries are simply not backup candidates.
-        }
-    }
-    return sizes;
 }
 
 export function blockDevice(partition: string, slotSuffix: string): string {
