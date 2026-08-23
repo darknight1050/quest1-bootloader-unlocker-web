@@ -229,6 +229,18 @@ function unlockSteps(): Step[] {
             state: "pending",
         },
         {
+            id: "confirm-slot",
+            title: "Confirm the slot switch",
+            detail: "Restart the bootloader and read back which slot it will boot.",
+            state: "pending",
+        },
+        {
+            id: "factory-reset",
+            title: "Factory reset",
+            detail: "Erase userdata so the downgraded slot comes up clean.",
+            state: "pending",
+        },
+        {
             id: "boot-os",
             title: "Boot into the OS",
             detail: "Leave fastboot and let Android mark the slot successful.",
@@ -396,31 +408,6 @@ export class Flow {
                     phrase: `overwrite ${target}`,
                 };
 
-            case "activate":
-                return {
-                    heading: `Boot slot ${target} next`,
-                    body: [
-                        `Slot ${target} now holds firmware ${DOWNGRADE_TARGET}. This step makes ` +
-                            "it the slot the headset boots from.",
-                        `${target} will be marked active but not yet successful, with a ` +
-                            "retry counter — the standard A/B state for a new slot. The " +
-                            "bootloader spends one retry per attempt and falls back to " +
-                            `${original}, which this tool has not touched, if they run out. ` +
-                            "Android clears that state itself once a boot succeeds.",
-                        `If ${target} does not boot, the backup cannot help you directly: ` +
-                            "restoring it needs an adb shell, and a device that will not boot " +
-                            `does not give you one. The fallback to ${original} is what saves ` +
-                            `you, and from there the backup can repair ${target}.`,
-                        `Do not stop half way: until the last step sets ${original} active ` +
-                            "again, the headset is queued to boot the downgraded slot.",
-                        "You can still roll this slot back to the backup right now — the " +
-                            "button below does exactly that and leaves the active slot alone.",
-                        `To continue, type: boot ${target}`,
-                    ],
-                    phrase: `boot ${target}`,
-                    offerRevert: true,
-                };
-
             case "unlock":
                 return {
                     heading: "Unlock the bootloader",
@@ -499,6 +486,10 @@ export class Flow {
                 return this.#stepUnlock(step);
             case "restore-slot":
                 return this.#stepRestoreSlot();
+            case "confirm-slot":
+                return this.#stepConfirmSlot();
+            case "factory-reset":
+                return this.#stepFactoryReset();
             case "boot-os":
                 return this.#stepBootOs();
             case "dev-identify":
@@ -1663,6 +1654,137 @@ export class Flow {
     }
 
     /**
+     * Restarts the bootloader and reads the slot choice back.
+     *
+     * `set_active` was answered by the bootloader that was running at the
+     * time; this asks a freshly started one, which is the reading that
+     * actually predicts the next boot. It also re-checks the unlock, since
+     * everything after this depends on both.
+     */
+    async #stepConfirmSlot(): Promise<void> {
+        const device = this.fastboot;
+        if (!device?.opened) {
+            throw new Error("connect to the fastboot device first");
+        }
+
+        this.#log("restarting the bootloader to read the slot back from a clean start");
+        this.fastboot = await rebootToBootloader(device, {
+            onLog: (line) => this.#log(line),
+        });
+
+        const expected = slotLetter(this.originalSlot!);
+        const current = await this.fastboot.getVar("current-slot");
+        if (current === undefined) {
+            throw new Error(
+                "the bootloader does not report current-slot, so the slot switch could " +
+                    "not be confirmed. Do not factory reset or boot until you know which " +
+                    "slot is active.",
+            );
+        }
+        this.#log(`getvar:current-slot = ${current}`);
+        if (current.trim().replace(/^_/, "") !== expected) {
+            throw new Error(
+                `the bootloader reports slot "${current}" as current, not "${expected}". ` +
+                    "Re-run “Restore the original slot” before going any further — the " +
+                    "headset is still queued to boot the downgraded slot.",
+            );
+        }
+        this.#log(`bootloader confirms slot _${expected} after a clean start`, "good");
+
+        const state = await readUnlockState(this.fastboot);
+        this.unlockState = state;
+        for (const [key, value] of Object.entries(state.evidence)) {
+            this.#log(`  ${key} = ${value}`);
+        }
+        if (state.linkLost) {
+            throw new Error(
+                "the bootloader stopped answering, so the unlock could not be re-checked. " +
+                    "Reconnect with “Connect bootloader” and run this step again.",
+            );
+        }
+        if (!state.unlocked) {
+            throw new Error(
+                "the bootloader came back locked after the restart, so the unlock did not " +
+                    "persist. Re-run the unlock step.",
+            );
+        }
+        this.#log("bootloader still reports UNLOCKED", "good");
+    }
+
+    /**
+     * Erases userdata so the slot boots clean.
+     *
+     * /data is encrypted against the verified-boot state, and that state just
+     * changed. What is left behind is undecryptable, which is what the
+     * “device is corrupt” screen on first boot is: the OS finding data it
+     * cannot open. Erasing it here means the headset comes straight up at
+     * setup instead.
+     *
+     * userdata is the one that has to go. misc and metadata follow when the
+     * bootloader allows it — misc holds the bootloader control block,
+     * metadata the encryption metadata — but a refusal there is logged
+     * rather than treated as a failure.
+     */
+    async #stepFactoryReset(): Promise<void> {
+        const device = this.fastboot;
+        if (!device?.opened) {
+            throw new Error("connect to the fastboot device first");
+        }
+
+        const state = await readUnlockState(device);
+        if (state.linkLost) {
+            throw new Error(
+                "the bootloader stopped answering, so its lock state could not be read. " +
+                    "Reconnect with “Connect bootloader” and run this step again.",
+            );
+        }
+        if (!state.unlocked) {
+            throw new Error(
+                "the bootloader is locked, so it will refuse to erase anything. Re-run " +
+                    "the unlock step first.",
+            );
+        }
+
+        this.#log("erasing userdata — everything on the headset goes with it", "warn");
+        const userdata = await device.erase("userdata");
+        this.#log(`erase:userdata -> ${userdata.status} ${userdata.message}`.trimEnd());
+        if (userdata.status === "FAIL") {
+            throw new Error(
+                `the bootloader refused to erase userdata: ${userdata.message}. Without ` +
+                    "this the first boot may come up reporting the device as corrupt; a " +
+                    "factory reset from the headset's own boot menu does the same job.",
+            );
+        }
+        this.#log("userdata erased", "good");
+
+        // Same order the bootloader's own wipe uses: userdata, misc, metadata.
+        for (const partition of ["misc", "metadata"]) {
+            // Ask before erasing: not every Quest 1 GPT carries both, and a
+            // bootloader asked to erase a partition it does not have answers
+            // with the same opaque "Check device console." it uses for real
+            // failures.
+            const type = await device.getVar(`partition-type:${partition}`);
+            if (type === undefined) {
+                this.#log(`${partition}: not a partition this bootloader knows — skipped`);
+                continue;
+            }
+
+            const response = await device.erase(partition);
+            this.#log(
+                `erase:${partition} -> ${response.status} ${response.message}`.trimEnd(),
+                response.status === "OKAY" ? "good" : "warn",
+            );
+            if (response.status === "FAIL") {
+                this.#log(
+                    `${partition} was not erased. That is not fatal: userdata is what ` +
+                        "decides whether the OS comes up clean, and it is already gone.",
+                    "warn",
+                );
+            }
+        }
+    }
+
+    /**
      * Leaves fastboot and boots the headset.
      *
      * The last thing the procedure needs is an actual boot: `set_active`
@@ -1694,8 +1816,16 @@ export class Flow {
         this.#log("the headset is booting", "good");
         this.#log(
             "Let it boot all the way into the system — that is what marks the slot " +
-                "successful. The first boot after an unlock wipes userdata, so it takes " +
-                "longer than usual and comes up at the setup screen.",
+                "successful. userdata was erased, so this first boot takes longer than " +
+                "usual and comes up at the setup screen.",
+            "warn",
+        );
+        this.#log(
+            "If it still comes up saying the device is corrupt and cannot be trusted, " +
+                "reset it from the headset itself: hold power and volume-down until the " +
+                "boot menu appears, " +
+                "pick Factory Reset with the volume keys and confirm with power. That " +
+                "erases /data only; the unlock and the firmware on both slots survive it.",
             "warn",
         );
         if (this.rollbackReset === false) {

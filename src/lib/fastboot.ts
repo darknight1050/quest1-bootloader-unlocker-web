@@ -329,6 +329,17 @@ export class FastbootDevice {
         return this.commandOk(`set_active:${slot}`);
     }
 
+    /**
+     * Erases a partition.
+     *
+     * FAIL is returned rather than thrown: which partitions a bootloader is
+     * willing to erase varies, and "this one refused" is often something the
+     * caller can live with.
+     */
+    async erase(partition: string): Promise<FastbootResponse> {
+        return this.command(`erase:${partition}`);
+    }
+
     async reboot(target?: "bootloader" | "fastboot"): Promise<FastbootResponse> {
         return this.command(target ? `reboot-${target}` : "reboot");
     }

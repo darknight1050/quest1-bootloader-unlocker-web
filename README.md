@@ -38,7 +38,9 @@ npm run pin-pe-hash  # re-pin the extracted bootloader hash in flow.ts
 | 9 | Reboot into fastboot | adb |
 | 10 | Check build number, send the payload, request the unlock token | fastboot, **typed confirmation** |
 | 11 | Re-confirm unlock state, then `set_active` the original slot | fastboot |
-| 12 | Reboot out of fastboot so Android marks the slot successful | fastboot |
+| 12 | Restart the bootloader and read the slot switch back | fastboot |
+| 13 | Erase userdata so the downgraded slot boots clean | fastboot |
+| 14 | Reboot out of fastboot so Android marks the slot successful | fastboot |
 
 The backup covers exactly the partitions the flash step overwrites — the 13 in
 the archive, no more and no less. Nothing is ever skipped: `checkPartitions`

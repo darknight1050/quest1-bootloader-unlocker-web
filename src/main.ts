@@ -256,6 +256,8 @@ function renderActions(): void {
     const fastbootStep = [
         "unlock",
         "restore-slot",
+        "confirm-slot",
+        "factory-reset",
         "boot-os",
         "dev-fastboot",
         "dev-reboot-bootloader",
@@ -269,6 +271,8 @@ function renderActions(): void {
     const fastbootSteps = [
         "unlock",
         "restore-slot",
+        "confirm-slot",
+        "factory-reset",
         "boot-os",
         "dev-fastboot",
         "dev-reboot-bootloader",
@@ -441,6 +445,10 @@ async function offerBackupCleanup(): Promise<void> {
             `The bootloader is unlocked and the headset is booting slot ` +
                 `${flow.originalSlot === 0 ? "_a" : "_b"}. Let it get all the way into the ` +
                 "system once so Android marks the slot successful.",
+            "If it still comes up saying the device is corrupt and cannot be trusted, " +
+                "reset it from the headset itself: hold power and volume-down until the " +
+                "boot menu appears, then pick Factory Reset. That erases /data only; the " +
+                "unlock survives it.",
             `The backup of slot ${target} is still stored in this browser. It is what puts ` +
                 `${target} back to the firmware it held before the downgrade — that slot ` +
                 `still holds ${DOWNGRADE_TARGET} until you restore it.`,
@@ -620,12 +628,24 @@ function askConfirmation(
         const check = () => {
             dialogOk.disabled = dialogInput.value.trim() !== confirmation.phrase;
         };
+
+        // Every way out of the dialog has to land here exactly once. A
+        // <dialog> can also be closed by the browser — Escape, or the form's
+        // implicit submission — and a close that did not resolve this promise
+        // would leave the caller awaiting forever with the UI stuck busy.
+        let settled = false;
         const finish = (result: boolean) => {
+            if (settled) return;
+            settled = true;
             dialogInput.removeEventListener("input", check);
+            dialogInput.removeEventListener("keydown", onKeydown);
             dialogOk.removeEventListener("click", accept);
             dialogCancel.removeEventListener("click", cancel);
             dialogRevert.removeEventListener("click", revert);
-            dialog.close();
+            dialog.removeEventListener("close", onClose);
+            if (dialog.open) {
+                dialog.close();
+            }
             resolve(result);
         };
         const accept = () => {
@@ -636,11 +656,23 @@ function askConfirmation(
             finish(false);
             onRevert?.();
         };
+        // Enter in the field would otherwise submit the form and close the
+        // dialog behind our back. Treat it as pressing Continue, and as
+        // nothing at all while the phrase does not match.
+        const onKeydown = (event: KeyboardEvent) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            accept();
+        };
+        // Escape, or anything else that closes it: the same as cancelling.
+        const onClose = () => finish(false);
 
         dialogInput.addEventListener("input", check);
+        dialogInput.addEventListener("keydown", onKeydown);
         dialogOk.addEventListener("click", accept);
         dialogCancel.addEventListener("click", cancel);
         dialogRevert.addEventListener("click", revert);
+        dialog.addEventListener("close", onClose);
 
         dialog.showModal();
         dialogInput.focus();
@@ -674,18 +706,31 @@ function showNotice(
             noticeAction.textContent = action.label;
         }
 
+        // As in askConfirmation: Escape and implicit submission close the
+        // dialog without going through these buttons, and a caller left
+        // awaiting a promise that never settles locks the page.
+        let settled = false;
         const finish = (run?: () => void) => {
+            if (settled) return;
+            settled = true;
             noticeOk.removeEventListener("click", close);
             noticeAction.removeEventListener("click", act);
-            noticeDialog.close();
+            noticeDialog.removeEventListener("close", onClose);
+            if (noticeDialog.open) {
+                noticeDialog.close();
+            }
             resolve();
             run?.();
         };
         const close = () => finish();
         const act = () => finish(action?.run);
+        // Dismissed by the browser: the same as pressing the dismiss button,
+        // never the action — that one only ever runs from a real click.
+        const onClose = () => finish();
 
         noticeOk.addEventListener("click", close);
         noticeAction.addEventListener("click", act);
+        noticeDialog.addEventListener("close", onClose);
         noticeDialog.showModal();
         (action ? noticeAction : noticeOk).focus();
     });
