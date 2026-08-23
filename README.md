@@ -311,28 +311,6 @@ past the signature-verification failure path. Patching it to `b6 00 00 14`
 past the last patched byte, overrunning the fastboot command buffer so the
 patched copy lands where it will execute.
 
-### Unlocking without the data wipe
-
-A checkbox in the Procedure panel adds a second patch site, off by default.
-
-At `0x37a70` the bootloader runs `tst w20, #0xff` then `b.ne 0x37ab4`. When that
-branch is *not* taken it executes the block at `0x37a78-0x37ab0`, which calls one
-routine three times with the UTF-16 partition names `userdata`, `misc` and
-`metadata` — the wipe an unlock performs. The edit rewrites the branch to
-`b +0x40`: the destination it already had, made unconditional. The block's own
-success path ends at that same address (`tbz x0, #0x3f, #0x37ab4`), so the patch
-lands exactly where the code would have gone had all three calls succeeded.
-
-**Untested on hardware, and plausibly a bad idea.** On Android 10 `/data` is
-encrypted with keys bound to the verified-boot state, so changing lock state
-without wiping can leave it undecryptable — ending in a forced reset regardless.
-Static analysis cannot say whether the Quest 1 behaves that way. Try it on a
-device you can afford to reset.
-
-The payload is built when the unlock step runs, not when the firmware loads, so
-the toggle can be changed right up until then; both variants are hashed and
-logged during the load step so the choice is auditable beforehand.
-
 A patch is a list of edits (`AblPatch`), not a single one: other builds need
 several sites — the reference implementation's Quest 2 v9248600200800000 patch
 touches four. Every edit is validated before any is written, so a patch never
@@ -387,6 +365,17 @@ damaged.
 Keeping the other slot intact is the safety net that matters — the backup only
 helps while the device still boots something, because restoring it requires an
 adb shell. If both slots are gone, so are you.
+
+## Credits
+
+- **ionstack**, the kernel exploit this tool roots the headset with, is the work
+  of [Beomjun](https://github.com/liemeldert) and
+  [darknight1050](https://github.com/darknight1050). Every privileged step here
+  — reading the partitions, the backup, the downgrade — runs on top of it, and
+  none of it would work without that exploit.
+- [darknight1050/quest-bootloader-unlocker][ref] is the reference
+  implementation this reimplements for the single downgrade build.
+- LZMA-JS by Nathan Rugg (npm `lzma`) does the firmware decompression.
 
 ## Licence
 
