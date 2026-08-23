@@ -38,6 +38,15 @@ export interface BackupSetMeta {
      * from, so it is marked at rest rather than inferred later.
      */
     readonly complete: boolean;
+    /**
+     * When every image it holds was last read back and matched, ISO 8601.
+     *
+     * Written only by a verify pass that compared the stored bytes against
+     * both the hash recorded at backup time and the live partition. Absent
+     * means "never checked since it was written" — which is what an imported
+     * set is, and what a set becomes again the moment an entry is replaced.
+     */
+    readonly verifiedAt?: string;
     /** Which flow produced it. */
     readonly mode: "unlock" | "dev";
 }
@@ -133,10 +142,24 @@ export class BackupSet {
     }
 
     async record(entry: BackupEntry): Promise<void> {
+        // Whatever was verified before, this is not it any more.
+        const { verifiedAt: _dropped, ...meta } = this.#meta;
         this.#meta = {
-            ...this.#meta,
-            entries: [...this.#meta.entries.filter((e) => e.name !== entry.name), entry],
+            ...meta,
+            entries: [...meta.entries.filter((e) => e.name !== entry.name), entry],
         };
+        await this.#writeMeta();
+    }
+
+    /**
+     * Records that every image in the set has been re-read and matched.
+     *
+     * The caller decides what "every" means — the unlock flow checks all
+     * thirteen, a dev rehearsal only its subset — so this makes no claim about
+     * coverage. That is what {@link BackupSetMeta.complete} is for.
+     */
+    async markVerified(when: string): Promise<void> {
+        this.#meta = { ...this.#meta, verifiedAt: when };
         await this.#writeMeta();
     }
 

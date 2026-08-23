@@ -225,13 +225,9 @@ function unlockSteps(): Step[] {
         {
             id: "restore-slot",
             title: "Restore the original slot",
-            detail: "Confirm the unlock took, then set the original slot active again.",
-            state: "pending",
-        },
-        {
-            id: "confirm-slot",
-            title: "Confirm the slot switch",
-            detail: "Restart the bootloader and read back which slot it will boot.",
+            detail:
+                "Set the original slot active again, then restart the bootloader and " +
+                "read the switch back.",
             state: "pending",
         },
         {
@@ -486,8 +482,6 @@ export class Flow {
                 return this.#stepUnlock(step);
             case "restore-slot":
                 return this.#stepRestoreSlot();
-            case "confirm-slot":
-                return this.#stepConfirmSlot();
             case "factory-reset":
                 return this.#stepFactoryReset();
             case "boot-os":
@@ -822,6 +816,7 @@ export class Flow {
         if (problems.length > 0) {
             throw new Error(`backup round-trip failed:\n${problems.join("\n")}`);
         }
+        await set.markVerified(new Date().toISOString());
         this.#log(
             `all ${names.length} images round-tripped through storage with matching hashes`,
             "good",
@@ -1242,6 +1237,7 @@ export class Flow {
             );
         }
 
+        await set.markVerified(new Date().toISOString());
         this.#log(
             `all ${PARTITIONS.length} backups re-read from storage and matched against the device`,
             "good",
@@ -1611,25 +1607,47 @@ export class Flow {
         const response = await device.setActive(original);
         this.#log(`set_active:${original} -> ${response.status} ${response.message}`, "good");
 
-        // Best effort: not every bootloader answers this, so a missing value is
-        // not treated as a failure — it just means we cannot confirm here.
-        const current = await device.getVar("current-slot");
-        if (current !== undefined) {
-            this.#log(`getvar:current-slot = ${current}`);
-            if (current.trim().replace(/^_/, "") !== original) {
-                throw new Error(
-                    `the bootloader reports slot "${current}" as current, not "${original}". ` +
-                        "Do not reboot until the active slot is what you expect.",
-                );
-            }
-            this.#log(`bootloader confirms slot ${original} is active`, "good");
-        } else {
-            this.#log(
-                "the bootloader does not report current-slot, so the switch could not be " +
-                    "confirmed here — check it after rebooting",
-                "warn",
+        // That answer came from the bootloader that was already running. Ask a
+        // freshly started one instead: its reading is the one that predicts
+        // the next boot, and the restart re-checks the unlock for free.
+        this.#log("restarting the bootloader to read the slot back from a clean start");
+        this.fastboot = await rebootToBootloader(device, {
+            onLog: (line) => this.#log(line),
+        });
+
+        const current = await this.fastboot.getVar("current-slot");
+        if (current === undefined) {
+            throw new Error(
+                "the bootloader does not report current-slot, so the slot switch could " +
+                    "not be confirmed. Do not go on until you know which slot is active.",
             );
         }
+        this.#log(`getvar:current-slot = ${current}`);
+        if (current.trim().replace(/^_/, "") !== original) {
+            throw new Error(
+                `the bootloader reports slot "${current}" as current, not "${original}". ` +
+                    "Run this step again before going any further — the headset is still " +
+                    "queued to boot the downgraded slot.",
+            );
+        }
+        this.#log(`bootloader confirms slot _${original} after a clean start`, "good");
+
+        const after = await readUnlockState(this.fastboot);
+        this.unlockState = after;
+        if (after.linkLost) {
+            throw new Error(
+                "the bootloader stopped answering, so the unlock could not be " +
+                    "re-checked. Reconnect with “Connect bootloader” and run this step " +
+                    "again.",
+            );
+        }
+        if (!after.unlocked) {
+            throw new Error(
+                "the bootloader came back locked after the restart, so the unlock did " +
+                    "not persist. Re-run the unlock step.",
+            );
+        }
+        this.#log("bootloader still reports UNLOCKED", "good");
 
         if (this.rollbackReset === false) {
             this.#log(
@@ -1651,64 +1669,6 @@ export class Flow {
                 "fall back to the other slot.",
             "warn",
         );
-    }
-
-    /**
-     * Restarts the bootloader and reads the slot choice back.
-     *
-     * `set_active` was answered by the bootloader that was running at the
-     * time; this asks a freshly started one, which is the reading that
-     * actually predicts the next boot. It also re-checks the unlock, since
-     * everything after this depends on both.
-     */
-    async #stepConfirmSlot(): Promise<void> {
-        const device = this.fastboot;
-        if (!device?.opened) {
-            throw new Error("connect to the fastboot device first");
-        }
-
-        this.#log("restarting the bootloader to read the slot back from a clean start");
-        this.fastboot = await rebootToBootloader(device, {
-            onLog: (line) => this.#log(line),
-        });
-
-        const expected = slotLetter(this.originalSlot!);
-        const current = await this.fastboot.getVar("current-slot");
-        if (current === undefined) {
-            throw new Error(
-                "the bootloader does not report current-slot, so the slot switch could " +
-                    "not be confirmed. Do not factory reset or boot until you know which " +
-                    "slot is active.",
-            );
-        }
-        this.#log(`getvar:current-slot = ${current}`);
-        if (current.trim().replace(/^_/, "") !== expected) {
-            throw new Error(
-                `the bootloader reports slot "${current}" as current, not "${expected}". ` +
-                    "Re-run “Restore the original slot” before going any further — the " +
-                    "headset is still queued to boot the downgraded slot.",
-            );
-        }
-        this.#log(`bootloader confirms slot _${expected} after a clean start`, "good");
-
-        const state = await readUnlockState(this.fastboot);
-        this.unlockState = state;
-        for (const [key, value] of Object.entries(state.evidence)) {
-            this.#log(`  ${key} = ${value}`);
-        }
-        if (state.linkLost) {
-            throw new Error(
-                "the bootloader stopped answering, so the unlock could not be re-checked. " +
-                    "Reconnect with “Connect bootloader” and run this step again.",
-            );
-        }
-        if (!state.unlocked) {
-            throw new Error(
-                "the bootloader came back locked after the restart, so the unlock did not " +
-                    "persist. Re-run the unlock step.",
-            );
-        }
-        this.#log("bootloader still reports UNLOCKED", "good");
     }
 
     /**
@@ -1818,6 +1778,12 @@ export class Flow {
             "Let it boot all the way into the system — that is what marks the slot " +
                 "successful. userdata was erased, so this first boot takes longer than " +
                 "usual and comes up at the setup screen.",
+            "warn",
+        );
+        this.#log(
+            "It restarts itself several times on the way there. That is what a first " +
+                "boot after a wipe looks like, not a boot loop — leave it plugged in and " +
+                "do not interrupt it until it reaches the setup screen.",
             "warn",
         );
         this.#log(

@@ -34,7 +34,8 @@ const retryStepButton = $<HTMLButtonElement>("retry-step");
 const rebootBootloaderButton = $<HTMLButtonElement>("reboot-bootloader");
 const stepHint = $<HTMLSpanElement>("step-hint");
 const statusText = $<HTMLParagraphElement>("status");
-const devicePanel = $<HTMLElement>("device-panel");
+const deviceEmpty = $<HTMLParagraphElement>("device-empty");
+const propsTable = $<HTMLTableElement>("props");
 const fingerprintOutput = $<HTMLOutputElement>("fingerprint");
 const propsBody = $<HTMLTableElement>("props").tBodies[0]!;
 const gatesList = $<HTMLUListElement>("gates");
@@ -42,6 +43,7 @@ const stepsList = $<HTMLOListElement>("steps");
 const backupsBox = $<HTMLDivElement>("backups");
 const logElement = $<HTMLPreElement>("log");
 const copyLogButton = $<HTMLButtonElement>("copy-log");
+const unsupportedBox = $<HTMLDivElement>("unsupported");
 const importBackupButton = $<HTMLButtonElement>("import-backup");
 const importFilesInput = $<HTMLInputElement>("import-files");
 
@@ -134,19 +136,65 @@ function syncBackupControls(): void {
 }
 
 function render(): void {
+    renderConnection();
     renderDevice();
     renderSteps();
     renderActions();
     syncBackupControls();
 }
 
+/** Set once WebUSB has been ruled out; nothing here can be connected then. */
+let webusbBlocked = false;
+
+/**
+ * Keeps the three connection buttons honest about what is connected.
+ *
+ * Each transport is offered only while it is not already open, and
+ * Disconnect only while there is something to disconnect.
+ */
+function renderConnection(): void {
+    const adbConnected = flow.adb !== undefined;
+    const fastbootConnected = flow.fastboot?.opened === true;
+
+    connectButton.disabled =
+        webusbBlocked || busy || adbConnected || fastbootConnected;
+    connectButton.title = adbConnected
+        ? "The headset is already connected over ADB"
+        : fastbootConnected
+          ? "The headset is in its bootloader — it does not answer adb there"
+          : "Talks ADB to the running system";
+
+    // A headset in fastboot is not answering adb, so a live ADB session means
+    // there is nothing to connect to on the fastboot side.
+    connectFastbootButton.disabled =
+        webusbBlocked || busy || fastbootConnected || adbConnected;
+    connectFastbootButton.title = fastbootConnected
+        ? "The bootloader is already connected over fastboot"
+        : adbConnected
+          ? "The headset is connected over ADB — reboot it into fastboot first"
+          : "Talks fastboot to the bootloader";
+
+    disconnectButton.disabled =
+        webusbBlocked || busy || !(adbConnected || fastbootConnected);
+}
+
 function renderDevice(): void {
     const identity = flow.identity;
+
+    // The panel stays put either way: a column that loses a box when the
+    // headset is unplugged reads as something having gone wrong.
     if (!identity) {
-        devicePanel.hidden = true;
+        deviceEmpty.hidden = false;
+        fingerprintOutput.hidden = true;
+        propsTable.hidden = true;
+        propsBody.replaceChildren();
+        gatesList.replaceChildren();
         return;
     }
-    devicePanel.hidden = false;
+
+    deviceEmpty.hidden = true;
+    fingerprintOutput.hidden = false;
+    propsTable.hidden = false;
     fingerprintOutput.textContent = identity.fingerprint || "(empty)";
 
     propsBody.replaceChildren();
@@ -195,6 +243,8 @@ function renderSteps(): void {
         const detail = document.createElement("span");
         detail.className = "step-detail";
         detail.textContent = step.detail;
+        // Done steps clamp this to one line; keep the rest reachable.
+        detail.title = step.detail;
 
         item.append(title, detail);
 
@@ -256,7 +306,6 @@ function renderActions(): void {
     const fastbootStep = [
         "unlock",
         "restore-slot",
-        "confirm-slot",
         "factory-reset",
         "boot-os",
         "dev-fastboot",
@@ -271,7 +320,6 @@ function renderActions(): void {
     const fastbootSteps = [
         "unlock",
         "restore-slot",
-        "confirm-slot",
         "factory-reset",
         "boot-os",
         "dev-fastboot",
@@ -332,8 +380,25 @@ async function renderBackups(): Promise<void> {
               : "incomplete";
         title.append(badge);
 
+        // Separate from completeness: one says how much is here, the other
+        // says whether what is here has been read back and checked.
+        const verified = document.createElement("span");
+        verified.className = set.verifiedAt
+            ? "badge badge-verified"
+            : "badge badge-unverified";
+        verified.textContent = set.verifiedAt ? "verified" : "unverified";
+        verified.title = set.verifiedAt
+            ? `Every image was re-read and matched against the device on ` +
+              `${new Date(set.verifiedAt).toLocaleString()}`
+            : "Never read back and compared against a device since it was written";
+        title.append(verified);
+
         const detail = document.createElement("span");
-        detail.textContent = `${new Date(set.createdAt).toLocaleString()} — ${set.fingerprint}`;
+        detail.textContent =
+            `${new Date(set.createdAt).toLocaleString()} — ${set.fingerprint}` +
+            (set.verifiedAt
+                ? ` — verified ${new Date(set.verifiedAt).toLocaleString()}`
+                : "");
 
         box.append(title, detail);
 
@@ -346,6 +411,16 @@ async function renderBackups(): Promise<void> {
                       "Restoring it would leave the other partitions untouched."
                     : `Incomplete: holds ${set.entries.length} of ${set.expected?.length ?? "?"} ` +
                       "partitions. Restoring it will not fully recover the slot.";
+            box.append(warning);
+        }
+
+        if (!set.verifiedAt) {
+            const warning = document.createElement("span");
+            warning.className = "backup-warning";
+            warning.textContent =
+                "Never verified: these images have not been read back out of storage " +
+                "and checked against a device since they were written. A backup you " +
+                "have not verified is a backup you do not know you have.";
             box.append(warning);
         }
 
@@ -445,6 +520,9 @@ async function offerBackupCleanup(): Promise<void> {
             `The bootloader is unlocked and the headset is booting slot ` +
                 `${flow.originalSlot === 0 ? "_a" : "_b"}. Let it get all the way into the ` +
                 "system once so Android marks the slot successful.",
+            "It restarts itself several times on the way there — that is a first boot " +
+                "after a wipe, not a boot loop. Leave it plugged in and do not interrupt " +
+                "it until it reaches the setup screen.",
             "If it still comes up saying the device is corrupt and cannot be trusted, " +
                 "reset it from the headset itself: hold power and volume-down until the " +
                 "boot menu appears, then pick Factory Reset. That erases /data only; the " +
@@ -570,6 +648,14 @@ async function startRestore(id: string): Promise<void> {
                     : `WARNING: this backup is marked incomplete — it holds ` +
                           `${plan.items.length} of ${plan.meta.expected?.length ?? "?"} partitions. ` +
                           "Restoring it will not fully recover the slot.",
+            );
+        }
+        if (!plan.meta.verifiedAt) {
+            body.push(
+                "WARNING: this backup has never been verified — nothing has read it " +
+                    "back out of storage and compared it to a device since it was " +
+                    "written. The hashes recorded at the time are all there is to go " +
+                    "on, and browser storage can rot underneath them.",
             );
         }
         body.push("The headset will be rooted with ionstack first.");
@@ -738,6 +824,76 @@ function showNotice(
 
 // -------------------------------------------------------------- connections
 
+interface WebusbProblem {
+    readonly heading: string;
+    readonly body: string[];
+}
+
+/**
+ * Why WebUSB cannot be used here, if it cannot.
+ *
+ * There are three separate reasons this fails and only one of them is "wrong
+ * browser", so they are reported apart: telling someone on Firefox to switch
+ * to https, or someone on plain http to install Chrome, sends them off fixing
+ * the wrong thing.
+ */
+function webusbProblem(): WebusbProblem | undefined {
+    if (navigator.usb && AdbDaemonWebUsbDeviceManager.BROWSER) {
+        return undefined;
+    }
+
+    if (!window.isSecureContext) {
+        return {
+            heading: "This page is not in a secure context, so WebUSB is switched off.",
+            body: [
+                `It is being served from ${window.location.origin}. Browsers only expose ` +
+                    "WebUSB over https, or over http from localhost / 127.0.0.1.",
+                "Open the same page over https, or run it locally with " +
+                    "`npm run dev` and use the http://localhost address it prints.",
+            ],
+        };
+    }
+
+    if (window.self !== window.top) {
+        return {
+            heading: "WebUSB is blocked inside this frame.",
+            body: [
+                "The page is embedded in another one, and USB access is not delegated " +
+                    "to it. Open it in a tab of its own.",
+            ],
+        };
+    }
+
+    return {
+        heading: "This browser has no WebUSB.",
+        body: [
+            "Firefox and Safari do not implement WebUSB and have both declined to. " +
+                "There is no flag or extension that changes that.",
+            "Use a Chromium-based desktop browser — Chrome, Edge, Brave, Opera or " +
+                "Vivaldi. Chrome for Android has WebUSB too, but this tool needs to be " +
+                "the USB host, so it has to run on a computer.",
+            "If you are already in one of those, WebUSB can also be turned off by " +
+                "enterprise policy (WebUsbAllowDevicesForUrls / DefaultWebUsbGuardSetting) " +
+                "— check chrome://policy, or try a personal profile.",
+        ],
+    };
+}
+
+function showUnsupported({ heading, body }: WebusbProblem): void {
+    unsupportedBox.replaceChildren();
+
+    const title = document.createElement("strong");
+    title.textContent = heading;
+    unsupportedBox.append(title);
+
+    for (const paragraph of body) {
+        const p = document.createElement("p");
+        p.textContent = paragraph;
+        unsupportedBox.append(p);
+    }
+    unsupportedBox.hidden = false;
+}
+
 async function withBusy(action: () => Promise<void>): Promise<void> {
     busy = true;
     render();
@@ -754,16 +910,93 @@ async function withBusy(action: () => Promise<void>): Promise<void> {
     }
 }
 
+/**
+ * The USB handle behind {@link Flow.adb}, kept so it can be closed directly.
+ *
+ * Closing the `Adb` is not always enough: a handshake that never finished
+ * leaves no `Adb` at all, but the interface stays claimed.
+ */
+let adbDevice: AdbDaemonWebUsbDevice | undefined;
+
+/** How long to wait for the daemon to answer before giving up on a handshake. */
+const HANDSHAKE_TIMEOUT_MS = 30_000;
+
+/**
+ * Drops the current ADB session and releases the USB interface.
+ *
+ * Both halves matter. Anything still reading the ADB endpoint consumes the
+ * packets the *next* handshake is waiting for, so a stale reader does not
+ * fail the reconnect — it hangs it, forever, at "Authenticating…".
+ */
+async function releaseAdb(): Promise<void> {
+    const adb = flow.adb;
+    flow.adb = undefined;
+    if (adb) {
+        try {
+            await adb.close();
+        } catch {
+            // Already gone; nothing to release.
+        }
+    }
+
+    const device = adbDevice;
+    adbDevice = undefined;
+    if (device?.raw.opened) {
+        try {
+            await device.raw.close();
+        } catch {
+            // Same.
+        }
+    }
+}
+
 async function connectAdb(device: AdbDaemonWebUsbDevice): Promise<void> {
+    // A previous session still holding the interface would swallow this one's
+    // handshake, so it has to be gone first.
+    await releaseAdb();
+    adbDevice = device;
+
     setStatus(`Opening ${device.name} (${device.serial})…`, "busy");
     const connection = await device.connect();
 
     setStatus("Authenticating — accept the prompt inside the headset…", "busy");
-    const transport = await AdbDaemonTransport.authenticate({
+    const attempt = AdbDaemonTransport.authenticate({
         serial: device.serial,
         connection,
         credentialStore,
     });
+
+    // Without a deadline a daemon that never answers leaves the page busy and
+    // every button disabled, with a reload as the only way out.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let transport;
+    try {
+        transport = await Promise.race([
+            attempt,
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(
+                    () =>
+                        reject(
+                            new Error(
+                                "the headset did not answer the ADB handshake within " +
+                                    `${HANDSHAKE_TIMEOUT_MS / 1000}s. If the “Allow USB ` +
+                                    "debugging” dialog is up inside the headset, accept it " +
+                                    "and click Connect again. Otherwise unplug and replug " +
+                                    "the cable.",
+                            ),
+                        ),
+                    HANDSHAKE_TIMEOUT_MS,
+                );
+            }),
+        ]);
+    } catch (error) {
+        // The losing promise must not surface later as an unhandled rejection.
+        attempt.catch(() => {});
+        await releaseAdb();
+        throw error;
+    } finally {
+        clearTimeout(timer);
+    }
 
     const adb = new Adb(transport);
     flow.adb = adb;
@@ -772,7 +1005,7 @@ async function connectAdb(device: AdbDaemonWebUsbDevice): Promise<void> {
     void transport.disconnected.then(() => {
         if (flow.adb?.transport === transport) {
             flow.adb = undefined;
-            disconnectButton.disabled = true;
+            adbDevice = undefined;
             setStatus("Headset disconnected.", "idle");
             render();
         }
@@ -780,7 +1013,6 @@ async function connectAdb(device: AdbDaemonWebUsbDevice): Promise<void> {
 
     // Show what we are looking at straight away, before any step runs.
     flow.identity = await identify(adb);
-    disconnectButton.disabled = false;
     setStatus(`Connected to ${adb.serial}.`, "ok");
     render();
 }
@@ -789,7 +1021,7 @@ connectButton.addEventListener("click", () => {
     void withBusy(async () => {
         const manager = AdbDaemonWebUsbDeviceManager.BROWSER;
         if (!manager) {
-            throw new Error("WebUSB is unavailable. Use Chrome or Edge over localhost.");
+            throw new Error(webusbProblem()?.heading ?? "WebUSB is unavailable.");
         }
         const device = await manager.requestDevice({
             filters: [{ vendorId: OCULUS_VENDOR_ID }],
@@ -825,10 +1057,7 @@ connectFastbootButton.addEventListener("click", connectFastboot);
 
 disconnectButton.addEventListener("click", () => {
     void withBusy(async () => {
-        const adb = flow.adb;
-        flow.adb = undefined;
-        disconnectButton.disabled = true;
-        await adb?.close();
+        await releaseAdb();
         await flow.fastboot?.close();
         flow.fastboot = undefined;
         setStatus("Disconnected.", "idle");
@@ -1063,13 +1292,17 @@ void (async () => {
     render();
     await renderBackups();
 
-    if (!AdbDaemonWebUsbDeviceManager.BROWSER) {
-        connectButton.disabled = true;
-        connectFastbootButton.disabled = true;
-        setStatus(
-            "WebUSB is unavailable in this browser. Use Chrome or Edge over https or localhost.",
-            "error",
-        );
+    const problem = webusbProblem();
+    if (problem) {
+        webusbBlocked = true;
+        devModeToggle.disabled = true;
+        render();
+        showUnsupported(problem);
+        setStatus(problem.heading, "error");
+        log(problem.heading, "error");
+        for (const line of problem.body) {
+            log(`  ${line}`, "error");
+        }
         return;
     }
 
@@ -1078,7 +1311,13 @@ void (async () => {
         "idle",
     );
 
+    // webusbProblem() has already returned above if this is missing; the
+    // check is here to say so to the type checker.
     const manager = AdbDaemonWebUsbDeviceManager.BROWSER;
+    if (!manager) {
+        return;
+    }
+
     const [device] = await manager.getDevices({
         filters: [{ vendorId: OCULUS_VENDOR_ID }],
     });

@@ -17,99 +17,112 @@
         </p>
       </header>
 
-      <section class="panel">
-        <div class="row">
-          <button id="connect" type="button">Connect headset (ADB)</button>
-          <button id="connect-fastboot" type="button" class="ghost">
-            Connect bootloader (fastboot)
-          </button>
-          <button id="disconnect" type="button" class="ghost" disabled>
-            Disconnect
-          </button>
-          <label class="check" title="Read-only rehearsal on non-Quest-1 hardware">
-            <input id="dev-mode" type="checkbox" />
-            Dev mode
-          </label>
-        </div>
-        <div id="dev-banner" class="dev-banner" hidden>
-          <p>
-            <strong>Dev mode.</strong> Read-only rehearsal: ionstack, the backup
-            round-trip, and the fastboot lock-state read. No partition is
-            written, no slot is switched, no bootloader is unlocked.
-          </p>
-          <label class="dev-cap">
-            Back up partitions up to
-            <input id="dev-cap" type="number" min="1" max="4096" step="1" value="256" />
-            MiB
-            <span class="hint">
-              keeps a multi-GB <code>super</code> out; 256 covers
-              <code>boot</code>, <code>recovery</code> and
-              <code>vendor_boot</code>
-            </span>
-          </label>
-        </div>
-        <p id="status" class="status idle">Checking WebUSB support…</p>
-      </section>
+      <div class="workspace">
+        <div class="col col-main">
+          <section class="panel">
+            <div class="row connect-row">
+              <button id="connect" type="button">Connect headset</button>
+              <button id="connect-fastboot" type="button" class="ghost">
+                Connect bootloader
+              </button>
+              <button id="disconnect" type="button" class="ghost" disabled>
+                Disconnect
+              </button>
+              <label class="check" title="Read-only rehearsal on non-Quest-1 hardware">
+                <input id="dev-mode" type="checkbox" />
+                Dev mode
+              </label>
+            </div>
+            <div id="dev-banner" class="dev-banner" hidden>
+              <p>
+                <strong>Dev mode.</strong> Read-only rehearsal: ionstack, the backup
+                round-trip, and the fastboot lock-state read. No partition is
+                written, no slot is switched, no bootloader is unlocked.
+              </p>
+              <label class="dev-cap">
+                Back up partitions up to
+                <input id="dev-cap" type="number" min="1" max="4096" step="1" value="256" />
+                MiB
+                <span class="hint">
+                  keeps a multi-GB <code>super</code> out; 256 covers
+                  <code>boot</code>, <code>recovery</code> and
+                  <code>vendor_boot</code>
+                </span>
+              </label>
+            </div>
+            <p id="status" class="status idle">Checking WebUSB support…</p>
+            <div id="unsupported" class="unsupported" hidden></div>
+          </section>
 
-      <section class="panel" id="device-panel" hidden>
-        <h2>Device</h2>
-        <output id="fingerprint" class="fingerprint">—</output>
-        <table id="props"><tbody></tbody></table>
-        <ul id="gates" class="gates"></ul>
-      </section>
+          <section class="panel steps-panel">
+            <h2>Procedure</h2>
+            <div class="row step-actions">
+              <button id="run-step" type="button" disabled>Run next step</button>
+              <button id="retry-step" type="button" class="ghost" hidden>
+                Retry this step
+              </button>
+              <button id="reboot-bootloader" type="button" class="ghost" hidden>
+                Reboot bootloader
+              </button>
+              <span id="step-hint" class="hint"></span>
+            </div>
+            <ol id="steps" class="steps"></ol>
+          </section>
 
-      <section class="panel">
-        <h2>Procedure</h2>
-        <ol id="steps" class="steps"></ol>
-        <div class="row step-actions">
-          <button id="run-step" type="button" disabled>Run next step</button>
-          <button id="retry-step" type="button" class="ghost" hidden>
-            Retry this step
-          </button>
-          <button id="reboot-bootloader" type="button" class="ghost" hidden>
-            Reboot bootloader
-          </button>
-          <span id="step-hint" class="hint"></span>
         </div>
-      </section>
 
-      <section class="panel" id="backups-panel">
-        <h2>Restore a backup</h2>
-        <p class="sub">
-          Independent recovery path: connect the headset, and this roots it with
-          ionstack and writes the images back. No downgrade, no fastboot, no
-          unlock. It needs a working adb shell, so it can only repair the
-          <em>inactive</em> slot from a device that still boots — if the active
-          slot is dead there is no shell to run the exploit in. The untouched
-          other slot is what protects you there, not this.
-        </p>
-        <div id="backups"></div>
-        <div class="row backup-import">
-          <button id="import-backup" type="button" class="ghost">
-            Import backup from disk
-          </button>
-          <input
-            id="import-files"
-            type="file"
-            accept=".zip,.img"
-            multiple
-            hidden
-          />
-          <span class="hint">
-            a <code>.zip</code> saved by this tool, or loose
-            <code>.img</code> files — for backups from another browser profile
-            or machine
-          </span>
-        </div>
-      </section>
+        <div class="col col-side">
+          <section class="panel" id="device-panel">
+            <h2>Device</h2>
+            <p id="device-empty" class="backups-empty">
+              Nothing connected. Connect the headset over ADB and its fingerprint,
+              build, slots and the checks run against them appear here.
+            </p>
+            <output id="fingerprint" class="fingerprint" hidden>—</output>
+            <table id="props" hidden><tbody></tbody></table>
+            <ul id="gates" class="gates"></ul>
+          </section>
 
-      <section class="panel log-panel">
-        <div class="row">
-          <h2>Log</h2>
-          <button id="copy-log" type="button" class="ghost small">Copy log</button>
+          <section class="panel log-panel">
+            <div class="row">
+              <h2>Log</h2>
+              <button id="copy-log" type="button" class="ghost small">Copy log</button>
+            </div>
+            <pre id="log"></pre>
+          </section>
+
+          <section class="panel" id="backups-panel">
+            <h2>Restore a backup</h2>
+            <p class="sub">
+              Independent recovery path: connect the headset, and this roots it with
+              ionstack and writes the images back. No downgrade, no fastboot, no
+              unlock. It needs a working adb shell, so it can only repair the
+              <em>inactive</em> slot from a device that still boots — if the active
+              slot is dead there is no shell to run the exploit in. The untouched
+              other slot is what protects you there, not this.
+            </p>
+            <div id="backups"></div>
+            <div class="row backup-import">
+              <button id="import-backup" type="button" class="ghost">
+                Import backup from disk
+              </button>
+              <input
+                id="import-files"
+                type="file"
+                accept=".zip,.img"
+                multiple
+                hidden
+              />
+              <span class="hint">
+                a <code>.zip</code> saved by this tool, or loose
+                <code>.img</code> files — for backups from another browser profile
+                or machine
+              </span>
+            </div>
+          </section>
+
         </div>
-        <pre id="log"></pre>
-      </section>
+      </div>
 
       <footer>
         <p>
