@@ -1235,11 +1235,33 @@ export class Flow {
         }
         this.#log("unlock state confirmed before switching slots", "good");
 
+        // A direct unlock never switched a slot, so there is no remembered
+        // original. The bootloader knows which one it is running, and the one
+        // worth going back to is the other: this run reached the vulnerable
+        // build on the slot it is on now.
         if (this.originalSlot === undefined) {
-            throw new Error(
-                "this run did not switch slots, so there is no original slot to go back " +
-                    "to — which slot should be active is yours to decide, not something " +
-                    "to guess at. Skip this step.",
+            if (!this.directUnlock) {
+                throw new Error(
+                    "this run did not switch slots and did not start from the bootloader " +
+                        "either, so which slot should be active cannot be worked out here.",
+                );
+            }
+
+            const running = await device.getVar("current-slot");
+            const letter = running?.trim().replace(/^_/, "");
+            if (letter !== "a" && letter !== "b") {
+                throw new Error(
+                    `the bootloader reports current-slot as ${JSON.stringify(running ?? null)}, ` +
+                        "so the slot to switch to cannot be worked out. Skip this step and " +
+                        "set the slot yourself if you need it changed.",
+                );
+            }
+
+            this.originalSlot = letter === "a" ? 1 : 0;
+            this.#log(
+                `bootloader is running slot _${letter}; the other slot ` +
+                    `_${slotLetter(this.originalSlot)} is the one this will make active`,
+                "warn",
             );
         }
         const original = slotLetter(this.originalSlot);
