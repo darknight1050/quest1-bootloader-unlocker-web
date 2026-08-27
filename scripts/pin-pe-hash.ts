@@ -10,7 +10,7 @@ import {
     patchEnd,
 } from "../src/lib/abl.js";
 
-const zip = new Uint8Array(readFileSync("binaries/16476800119700000.zip"));
+const zip = new Uint8Array(readFileSync("binaries/quest1/16476800119700000.zip"));
 const abl = unzipSync(zip, { filter: (f) => f.name === "abl.img" })["abl.img"]!;
 const pe = await extractLinuxLoaderPe(abl);
 const hash = createHash("sha256").update(pe).digest("hex");

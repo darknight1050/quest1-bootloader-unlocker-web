@@ -14,9 +14,8 @@ import {
     applyPatch,
     buildUnlockPayload,
     extractLinuxLoaderPe,
-    unlockPatch,
 } from "./abl.js";
-import { fetchAsset, isSecureOrigin } from "./assets.js";
+import { expectedHash, fetchAsset, isSecureOrigin } from "./assets.js";
 import {
     getCurrentSlot,
     pushBootctl,
@@ -26,8 +25,6 @@ import {
     slotSuffix,
 } from "./bootctl.js";
 import {
-    DEVICE,
-    DOWNGRADE_TARGET,
     WORKDIR,
     type DeviceIdentity,
     type Gate,
@@ -49,8 +46,6 @@ import {
     type UnlockState,
 } from "./fastboot.js";
 import {
-    PARTITIONS,
-    type PartitionName,
     backupEntryName,
     backupPartition,
     checkPartitions,
@@ -61,37 +56,28 @@ import {
     restorePartition,
     verifyBackup,
 } from "./partitions.js";
-import { type DeviceProfile, QUEST1 } from "../data/profiles.js";
+import {
+    type DeviceProfile,
+    type UnlockRecipe,
+    PROFILES,
+    QUEST1,
+    missingPieces,
+    profileFor,
+} from "../data/profiles.js";
 import { readSlotVerdict } from "./gpt.js";
 import { acquireRoot, isRoot, pushIonstack } from "./root.js";
 import { BackupSet, estimateQuota, requestPersistence } from "./storage.js";
 
 export const ASSETS = {
-    firmware: "/binaries/16476800119700000.zip",
     bootctl: "/binaries/bootctl_shim",
 } as const;
 
-/**
- * The exact `abl.img` the bootloader patch was derived from.
- *
- * The archive as a whole is verified on fetch, but this pins the one file the
- * exploit is built out of, so a repacked archive cannot slip a different
- * bootloader past the patch-site check.
- */
-export const EXPECTED_ABL_SHA256 =
-    "c2cc1f173bec2956fa5e068abc98db82e1cd2c651a4f4bb7ae31c79605e43707";
-
-/**
- * sha256 of the extracted LinuxLoader image, before patching.
- *
- * Checked against the whole image rather than a prefix: with patches able to
- * touch several sites, "everything before the first edit" stops being a
- * meaningful thing to hash.
- */
-export const EXPECTED_PE_SHA256 =
-    "7663280938b54f8dc061b502f581cba4bea638473080c44a8dcfec88a570f74c";
-
-export type StepState = "pending" | "running" | "done" | "failed" | "blocked";
+export type StepState =
+    | "pending"
+    | "running"
+    | "done"
+    | "failed"
+    | "skipped";
 
 export interface StepProgress {
     readonly label: string;
@@ -137,13 +123,13 @@ function unlockSteps(): Step[] {
         {
             id: "identify",
             title: "Identify the device",
-            detail: "Read the fingerprint and check this is a supported Quest 1.",
+            detail: "Read the fingerprint and pick the profile for this headset.",
             state: "pending",
         },
         {
             id: "assets",
             title: "Load firmware and tools",
-            detail: `Unpack ${DOWNGRADE_TARGET}.zip and build the bootloader patch.`,
+            detail: "Unpack the downgrade archive and build the bootloader patch.",
             state: "pending",
         },
         {
@@ -162,14 +148,14 @@ function unlockSteps(): Step[] {
             id: "backup",
             title: "Back up the target slot",
             detail:
-                "Copy all 13 partitions into browser storage, then read every image " +
-                "back out and re-hash it against the live partition.",
+                "Copy every partition of the boot chain into browser storage, then read " +
+                "each image back out and re-hash it against the live partition.",
             state: "pending",
         },
         {
             id: "flash",
             title: "Downgrade the inactive slot",
-            detail: "Write the 13 images and verify every partition by hash.",
+            detail: "Write the downgrade images and verify every partition by hash.",
             state: "pending",
         },
         {
@@ -213,12 +199,24 @@ function unlockSteps(): Step[] {
     ];
 }
 
+/**
+ * Steps a direct unlock may leave out.
+ *
+ * Both only make sense as the tail of a downgrade this run performed: there is
+ * no original slot to go back to if nothing switched one, and a headset that
+ * was already on the vulnerable build may not want its data erased. In the
+ * full flow they stay mandatory.
+ */
+const OPTIONAL_AFTER_DIRECT_UNLOCK = ["restore-slot", "factory-reset"];
+
 export class Flow {
     readonly steps: Step[];
     readonly #events: FlowEvents;
 
     /** Which device we are talking to; decides the ionstack build and tuning. */
     profile: DeviceProfile = QUEST1;
+    /** True when the run started at the unlock step rather than at the top. */
+    directUnlock = false;
 
     adb: Adb | undefined;
     identity: DeviceIdentity | undefined;
@@ -274,18 +272,18 @@ export class Flow {
                             "bad write into the wrong structure can corrupt data on the " +
                             "device. Nothing has been written to a partition yet, so a panic " +
                             "here costs you a reboot and nothing more.",
-                        "There is no supported way to un-brick a Quest 1 whose bootloader " +
-                            "chain is damaged. You are accepting that risk.",
-                        `To continue, type: root ${DEVICE.codename}`,
+                        `There is no supported way to un-brick a ${this.profile.label} ` +
+                            "whose bootloader chain is damaged. You are accepting that risk.",
+                        `To continue, type: root ${this.profile.codenames[0]}`,
                     ],
-                    phrase: `root ${DEVICE.codename}`,
+                    phrase: `root ${this.profile.codenames[0]}`,
                 };
 
             case "flash":
                 return {
                     heading: `Overwriting slot ${target} — risk of bricking`,
                     body: [
-                        `This writes ${PARTITIONS.length} partitions, including the bootloader ` +
+                        `This writes ${this.profile.partitions.length} partitions, including the bootloader ` +
                             `chain (xbl, abl, tz, hyp), to slot ${target}. If it is interrupted ` +
                             "part-way — cable pulled, headset sleeps, browser tab closed — that " +
                             "slot will not boot.",
@@ -307,9 +305,9 @@ export class Flow {
                             "then requests the unlock token.",
                         "Unlocking erases userdata, misc and metadata. That is the " +
                             "bootloader's stock behaviour and this tool does not change it.",
-                        `To continue, type: unlock ${DOWNGRADE_TARGET}`,
+                        `To continue, type: unlock ${this.profile.downgradeTarget}`,
                     ],
-                    phrase: `unlock ${DOWNGRADE_TARGET}`,
+                    phrase: `unlock ${this.profile.downgradeTarget}`,
                 };
 
             default:
@@ -323,6 +321,80 @@ export class Flow {
 
     #progress(step: Step, label: string, transferred: number, total: number): void {
         step.progress = { label, transferred, total };
+        this.#events.onChange();
+    }
+
+    /**
+     * Starts at the unlock step, for a headset already on the vulnerable build.
+     *
+     * The bootloader knows which firmware it is, so that is what picks the
+     * profile here — there is no adb session to ask, and the build number is
+     * the only thing that decides whether the payload fits. Everything the
+     * downgrade would have done is either already true or not needed, so those
+     * steps are marked skipped rather than quietly dropped.
+     */
+    async startDirectUnlock(): Promise<void> {
+        const device = this.fastboot;
+        if (!device?.opened) {
+            throw new Error("connect the bootloader over fastboot first");
+        }
+
+        const info = await device.deviceInfo();
+        for (const [key, value] of info) {
+            this.#log(`  ${key}: ${value}`);
+        }
+
+        const build = info.get("Build number");
+        if (!build) {
+            throw new Error(
+                "the bootloader did not report a build number, so there is no way to " +
+                    "tell which payload it would take",
+            );
+        }
+
+        const profile = PROFILES.find((p) => p.downgradeTarget === build);
+        if (!profile) {
+            throw new Error(
+                `this bootloader is build ${build}, which is not one this tool has a ` +
+                    `payload for (${PROFILES.map((p) => `${p.label} ${p.downgradeTarget}`).join(", ")}). ` +
+                    "Run the full procedure to downgrade it first.",
+            );
+        }
+        this.profile = profile;
+        this.#log(
+            `bootloader build ${build} is the ${profile.label} downgrade target`,
+            "good",
+        );
+
+        // Load and verify the archive exactly as the assets step would: the
+        // unlock has nothing to send without it.
+        await this.#stepAssets();
+
+        const unlockIndex = this.steps.findIndex((step) => step.id === "unlock");
+        for (let i = 0; i < unlockIndex; i++) {
+            const step = this.steps[i]!;
+            step.state = step.id === "assets" ? "done" : "skipped";
+            step.error = undefined;
+            step.progress = undefined;
+        }
+        this.#index = unlockIndex;
+        this.directUnlock = true;
+        this.#events.onChange();
+    }
+
+    /** Whether this step may be passed over rather than run. */
+    canSkip(step: Step): boolean {
+        return this.directUnlock && OPTIONAL_AFTER_DIRECT_UNLOCK.includes(step.id);
+    }
+
+    /** Passes over an optional step. */
+    skipCurrent(): void {
+        const step = this.current;
+        if (!step || !this.canSkip(step)) return;
+        step.state = "skipped";
+        step.error = undefined;
+        step.progress = undefined;
+        this.#index++;
         this.#events.onChange();
     }
 
@@ -421,14 +493,35 @@ export class Flow {
             throw new Error(`${blocker.title}. ${blocker.detail}`);
         }
 
-        // The gates above already refused anything that is not a Quest 1.
-        this.profile = QUEST1;
+        // The gates above already refused anything with no profile.
+        this.profile = profileFor(identity.device) ?? QUEST1;
+
+        // A profile can name a payload this build does not ship. Catching it
+        // here means the device is turned away while it is still whole,
+        // rather than at the root step with a 404 for a missing binary.
+        if (!expectedHash(this.profile.ionstack)) {
+            throw new Error(
+                `this build has no ionstack for the ${this.profile.label} ` +
+                    `(${this.profile.ionstack} is not in the payload manifest), so it ` +
+                    "cannot be rooted. Nothing has been written.",
+            );
+        }
+
+        this.#log(
+            `profile: ${this.profile.label} — downgrades to ${this.profile.downgradeTarget}, ` +
+                `${this.profile.partitions.length} partitions`,
+            "good",
+        );
         await findByNameDir(adb, this.profile.byNameDirs);
         this.#log(`by-name directory: ${getByNameDir()}`);
     }
 
     async #stepAssets(): Promise<void> {
-        const zip = await this.#fetchAsset(ASSETS.firmware, "firmware archive");
+        const recipe = this.#requireUnlockRecipe();
+        const zip = await this.#fetchAsset(
+            this.profile.firmware,
+            `${this.profile.label} firmware archive`,
+        );
         const entries = await new Promise<Record<string, Uint8Array>>((resolve, reject) => {
             unzip(zip, (error, data) => (error ? reject(error) : resolve(data)));
         });
@@ -437,7 +530,7 @@ export class Flow {
         const names = [...this.images.keys()].sort();
         this.#log(`unpacked ${names.length} images: ${names.join(", ")}`);
 
-        for (const partition of PARTITIONS) {
+        for (const partition of this.profile.partitions) {
             if (!this.images.has(`${partition}.img`)) {
                 throw new Error(`the archive is missing ${partition}.img`);
             }
@@ -445,9 +538,9 @@ export class Flow {
 
         const abl = this.images.get("abl.img")!;
         const ablHash = await sha256(abl);
-        if (ablHash !== EXPECTED_ABL_SHA256) {
+        if (ablHash !== recipe.ablSha256) {
             throw new Error(
-                `abl.img inside the archive hashes ${ablHash}, expected ${EXPECTED_ABL_SHA256}. ` +
+                `abl.img inside the archive hashes ${ablHash}, expected ${recipe.ablSha256}. ` +
                     "The bootloader patch was derived from a specific image; refusing to " +
                     "build a payload from a different one.",
             );
@@ -455,10 +548,10 @@ export class Flow {
 
         const pe = await extractLinuxLoaderPe(abl.slice());
         const peHash = await sha256(pe);
-        if (peHash !== EXPECTED_PE_SHA256) {
+        if (peHash !== recipe.peSha256) {
             throw new Error(
                 "the extracted LinuxLoader image is not the one this patch was written " +
-                    `for (hashes ${peHash}, expected ${EXPECTED_PE_SHA256})`,
+                    `for (hashes ${peHash}, expected ${recipe.peSha256})`,
             );
         }
 
@@ -477,12 +570,31 @@ export class Flow {
         );
     }
 
+    /**
+     * The unlock recipe for the connected device, or a refusal.
+     *
+     * Reached before anything is written, so a device whose patch is unknown
+     * is turned away while it is still whole rather than after its boot chain
+     * has been rolled back.
+     */
+    #requireUnlockRecipe(): UnlockRecipe {
+        const recipe = this.profile.unlock;
+        if (!recipe) {
+            throw new Error(
+                `${this.profile.label} is recognised but not supported yet: ` +
+                    `${missingPieces(this.profile).join(", ")} ` +
+                    "is still missing. Nothing has been written.",
+            );
+        }
+        return recipe;
+    }
+
     /** Builds the unlock payload from the pristine image. */
     #buildPayload(): { payload: Uint8Array; patch: AblPatch } {
         if (!this.pe) {
             throw new Error("the firmware has not been loaded yet");
         }
-        const patch = unlockPatch();
+        const patch = this.#requireUnlockRecipe().patch;
         const image = this.pe.slice();
         applyPatch(image, patch);
         return { payload: buildUnlockPayload(image, patch), patch };
@@ -574,7 +686,7 @@ export class Flow {
 
         // Exactly the partitions the flash step overwrites — no more, no less.
         // checkPartitions throws if any of them is missing on the target slot.
-        const sizes = await checkPartitions(adb, target);
+        const sizes = await checkPartitions(adb, target, this.profile.partitions);
         const totalBytes = [...sizes.values()].reduce((a, b) => a + b, 0);
         const largest = Math.max(...sizes.values());
 
@@ -604,7 +716,7 @@ export class Flow {
         );
 
         let done = 0;
-        for (const partition of PARTITIONS) {
+        for (const partition of this.profile.partitions) {
             const size = sizes.get(partition)!;
             const hash = await backupPartition(
                 adb,
@@ -615,7 +727,7 @@ export class Flow {
                 (p) => {
                     this.#progress(
                         step,
-                        `${p.phase} ${p.partition}${target} (${done + 1}/${PARTITIONS.length})`,
+                        `${p.phase} ${p.partition}${target} (${done + 1}/${this.profile.partitions.length})`,
                         p.transferred,
                         p.total,
                     );
@@ -712,12 +824,12 @@ export class Flow {
         const problems: string[] = [];
         let done = 0;
 
-        for (const partition of PARTITIONS) {
+        for (const partition of this.profile.partitions) {
             this.#progress(
                 step,
                 `verifying ${partition}${target}`,
                 done,
-                PARTITIONS.length,
+                this.profile.partitions.length,
             );
 
             const { stored, device, recorded } = await verifyBackup(
@@ -744,7 +856,7 @@ export class Flow {
                 step,
                 `verifying ${partition}${target}`,
                 done,
-                PARTITIONS.length,
+                this.profile.partitions.length,
             );
         }
 
@@ -756,7 +868,7 @@ export class Flow {
 
         await set.markVerified(new Date().toISOString());
         this.#log(
-            `all ${PARTITIONS.length} backups re-read from storage and matched against the device`,
+            `all ${this.profile.partitions.length} backups re-read from storage and matched against the device`,
             "good",
         );
     }
@@ -783,7 +895,7 @@ export class Flow {
         this.#log(`reverting slot ${target} to backup ${set.id}`, "warn");
 
         let done = 0;
-        for (const partition of PARTITIONS) {
+        for (const partition of this.profile.partitions) {
             const { expected, actual } = await restorePartition(
                 adb,
                 set,
@@ -791,7 +903,7 @@ export class Flow {
                 target,
                 (p) =>
                     onProgress?.(
-                        `${p.phase} ${p.partition}${target} (${done + 1}/${PARTITIONS.length})`,
+                        `${p.phase} ${p.partition}${target} (${done + 1}/${this.profile.partitions.length})`,
                         p.transferred,
                         p.total,
                     ),
@@ -819,15 +931,15 @@ export class Flow {
         if (!(await isRoot(adb))) {
             throw new Error("the shell is no longer root; re-run the root step");
         }
-        if (!this.backup || this.backup.meta.entries.length !== PARTITIONS.length) {
+        if (!this.backup || this.backup.meta.entries.length !== this.profile.partitions.length) {
             throw new Error(
                 `refusing to flash: the backup holds ${this.backup?.meta.entries.length ?? 0} of ` +
-                    `${PARTITIONS.length} partitions`,
+                    `${this.profile.partitions.length} partitions`,
             );
         }
 
         let done = 0;
-        for (const partition of PARTITIONS) {
+        for (const partition of this.profile.partitions) {
             const image = this.images.get(`${partition}.img`)!;
             const { expected, actual } = await flashPartition(
                 adb,
@@ -837,7 +949,7 @@ export class Flow {
                 (p) => {
                     this.#progress(
                         step,
-                        `${p.phase} ${p.partition}${target} (${done + 1}/${PARTITIONS.length})`,
+                        `${p.phase} ${p.partition}${target} (${done + 1}/${this.profile.partitions.length})`,
                         p.transferred,
                         p.total,
                     );
@@ -854,7 +966,7 @@ export class Flow {
             this.#log(`  ${partition}${target}  verified ${actual}`, "good");
         }
 
-        this.#log(`all ${PARTITIONS.length} partitions written and verified on ${target}`, "good");
+        this.#log(`all ${this.profile.partitions.length} partitions written and verified on ${target}`, "good");
     }
 
     async #stepActivate(): Promise<void> {
@@ -958,11 +1070,11 @@ export class Flow {
         if (!buildNumber) {
             throw new Error("the bootloader did not report a build number");
         }
-        if (buildNumber !== DOWNGRADE_TARGET) {
+        if (buildNumber !== this.profile.downgradeTarget) {
             throw new Error(
                 `the bootloader reports build ${buildNumber}, but the payload is built for ` +
-                    `${DOWNGRADE_TARGET}. Sending it to a different build would not unlock ` +
-                    "anything and may hang the bootloader.",
+                    `${this.profile.downgradeTarget}. Sending it to a different build would ` +
+                    "not unlock anything and may hang the bootloader.",
             );
         }
         this.#log(`bootloader build ${buildNumber} matches the payload`, "good");
@@ -1123,7 +1235,14 @@ export class Flow {
         }
         this.#log("unlock state confirmed before switching slots", "good");
 
-        const original = slotLetter(this.originalSlot!);
+        if (this.originalSlot === undefined) {
+            throw new Error(
+                "this run did not switch slots, so there is no original slot to go back " +
+                    "to — which slot should be active is yours to decide, not something " +
+                    "to guess at. Skip this step.",
+            );
+        }
+        const original = slotLetter(this.originalSlot);
 
         // Read the slot first. A previous run may have set it and then failed
         // on the reconnect — routinely so on Android, where the bootloader has
@@ -1259,7 +1378,7 @@ export class Flow {
 
         // Same order the bootloader's own wipe uses: userdata, misc, metadata.
         for (const partition of ["misc", "metadata"]) {
-            // Ask before erasing: not every Quest 1 GPT carries both, and a
+            // Ask before erasing: not every GPT carries both, and a
             // bootloader asked to erase a partition it does not have answers
             // with the same opaque "Check device console." it uses for real
             // failures.
@@ -1363,4 +1482,3 @@ export class Flow {
     }
 }
 
-export type { PartitionName };

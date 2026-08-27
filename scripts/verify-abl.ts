@@ -5,6 +5,7 @@ import { unzipSync } from "fflate";
 import {
     type AblPatch,
     OVERFLOW,
+    PATCH_16476800118700000,
     PATCH_16476800119700000,
     applyPatch,
     buildUnlockPayload,
@@ -17,7 +18,7 @@ import {
 const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
 const hex = (b: Uint8Array) => Array.from(b).map((x) => x.toString(16).padStart(2, "0")).join(" ");
 
-const zip = new Uint8Array(readFileSync("binaries/16476800119700000.zip"));
+const zip = new Uint8Array(readFileSync("binaries/quest1/16476800119700000.zip"));
 const files = unzipSync(zip, { filter: (f) => f.name === "abl.img" });
 const abl = files["abl.img"]!;
 console.log("abl.img            ", abl.length, "bytes  sha256", sha(abl));
@@ -136,6 +137,66 @@ console.log();
     // The bootloader's userdata/misc/metadata wipe is left exactly as shipped.
     checks.push(["the payload leaves the wipe branch untouched",
         hex(image.subarray(0x37a74, 0x37a78)) === hex(pristine.subarray(0x37a74, 0x37a78))]);
+}
+
+// --- every profile's archive, patch and pinned hashes ----------------------
+//
+// The checks above go deep on the Quest 1 image because that is where the
+// payload builder itself is exercised. This asserts the same load-bearing
+// facts for every device the app ships a recipe for: the archive is the one
+// the recipe was derived from, the patch site still holds what it expects,
+// and the payload it produces carries the edit.
+{
+    const { PROFILES } = await import("../src/data/profiles.js");
+
+    for (const profile of PROFILES) {
+        const recipe = profile.unlock;
+        if (!recipe) {
+            console.log(`
+${profile.label}: no unlock recipe yet — skipped`);
+            continue;
+        }
+
+        const archive = `binaries/${profile.firmware.replace("/binaries/", "")}`;
+        let bytes: Uint8Array;
+        try {
+            bytes = new Uint8Array(readFileSync(archive));
+        } catch {
+            console.log(`
+${profile.label}: ${archive} is not in this checkout — skipped`);
+            continue;
+        }
+
+        console.log(`
+${profile.label} (${archive})`);
+        const image = unzipSync(bytes, { filter: (f) => f.name === "abl.img" })["abl.img"]!;
+        const extracted = await extractLinuxLoaderPe(image.slice());
+        const built = buildUnlockPayload(
+            (() => {
+                const copy = extracted.slice();
+                applyPatch(copy, recipe.patch);
+                return copy;
+            })(),
+            recipe.patch,
+        );
+
+        checks.push(
+            [`${profile.id}: abl.img matches the pinned hash`, sha(image) === recipe.ablSha256],
+            [`${profile.id}: extracted PE matches the pinned hash`, sha(extracted) === recipe.peSha256],
+            [`${profile.id}: every patch site holds what the recipe expects`,
+                recipe.patch.every((e) => e.expect.every((b, i) => extracted[e.offset + i] === b))],
+            [`${profile.id}: payload is 0x100000 + 0x${patchEnd(recipe.patch).toString(16)}`,
+                built.length === OVERFLOW + patchEnd(recipe.patch)],
+            [`${profile.id}: payload carries every edit`,
+                recipe.patch.every((e) => hex(built.subarray(OVERFLOW + e.offset, OVERFLOW + e.offset + e.replace.length))
+                    === hex(Uint8Array.from(e.replace)))],
+            [`${profile.id}: the archive holds every partition the profile lists`,
+                (() => {
+                    const names = Object.keys(unzipSync(bytes, { filter: () => true }));
+                    return profile.partitions.every((name) => names.includes(`${name}.img`));
+                })()],
+        );
+    }
 }
 
 let failed = 0;

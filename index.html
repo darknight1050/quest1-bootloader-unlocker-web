@@ -3,18 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Quest 1 Bootloader Unlocker</title>
+    <title>Quest Bootloader Unlocker</title>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
     <main>
       <header>
         <div>
-          <h1>Quest&nbsp;1 Bootloader Unlocker</h1>
+          <h1>Quest Bootloader Unlocker</h1>
           <p class="sub">
-            Downgrades the inactive slot to
-            <code>16476800119700000</code>, boots it, and unlocks the bootloader
-            through CVE-2021-1931. Quest&nbsp;1 only.
+            Downgrades the inactive slot to a build with a vulnerable bootloader,
+            boots it, and unlocks through CVE-2021-1931.
+            Quest&nbsp;1 and Quest&nbsp;2.
           </p>
         </div>
         <a
@@ -46,6 +46,15 @@
                 Disconnect
               </button>
             </div>
+            <div class="row direct-unlock" id="direct-unlock-row" hidden>
+              <button id="unlock-now" type="button" class="ghost">
+                Unlock this bootloader
+              </button>
+              <span class="hint">
+                for a headset already on the downgraded build — skips the backup
+                and the downgrade
+              </span>
+            </div>
             <p id="status" class="status idle">Checking WebUSB support…</p>
             <div id="unsupported" class="unsupported" hidden></div>
           </section>
@@ -56,6 +65,9 @@
               <button id="run-step" type="button" disabled>Run next step</button>
               <button id="retry-step" type="button" class="ghost" hidden>
                 Retry this step
+              </button>
+              <button id="skip-step" type="button" class="ghost" hidden>
+                Skip
               </button>
               <button id="reboot-bootloader" type="button" class="ghost" hidden>
                 Reboot bootloader

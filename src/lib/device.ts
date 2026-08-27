@@ -8,6 +8,12 @@ import {
 } from "@yume-chan/stream-extra";
 
 import versions from "../data/versions.json";
+import {
+    PROFILES,
+    isSupported,
+    missingPieces,
+    profileFor,
+} from "../data/profiles.js";
 
 export interface Build {
     readonly incremental: string;
@@ -19,9 +25,7 @@ export interface Build {
 }
 
 export const BUILDS = versions.builds as readonly Build[];
-export const DOWNGRADE_TARGET = versions.downgradeTarget;
-export const ROOT_SUPPORTED = versions.rootSupported as readonly string[];
-export const DEVICE = versions.device;
+/** Quest 1 build index; the downgrade target itself lives on the profile. */
 
 /** Working directory for everything we push. */
 export const WORKDIR = "/data/local/tmp/q1u";
@@ -147,44 +151,57 @@ export interface Gate {
 /**
  * Decides whether this device may proceed.
  *
- * Aborts on anything that is not a Quest 1, and on a device already at or
- * below the downgrade target. Warns — but allows an explicit override — when
- * the build is not one the root exploit has been confirmed on.
+ * Aborts on hardware no profile matches, on a device whose profile is not
+ * finished, and on one already at or below its downgrade target. Warns — but
+ * allows an explicit override — when the build is not one the root exploit has
+ * been confirmed on.
  */
 export function evaluateGates(identity: DeviceIdentity): Gate[] {
     const gates: Gate[] = [];
 
-    const isQuest1 =
-        identity.device === DEVICE.codename ||
-        identity.fingerprint.includes(`/${DEVICE.product}/`);
-    gates.push(
-        isQuest1
-            ? {
-                  status: "ok",
-                  title: "Device is a Quest 1",
-                  detail: `${identity.model} (${identity.device}), Android ${identity.release}`,
-              }
-            : {
-                  status: "abort",
-                  title: "Only the Quest 1 is supported",
-                  detail:
-                      `This device reports "${identity.device || "unknown"}" ` +
-                      `(${identity.model || "unknown model"}). This tool only supports ` +
-                      `the Quest 1 (${DEVICE.codename}); the downgrade images and the ` +
-                      "bootloader patch are specific to it and would brick other hardware.",
-              },
-    );
-    if (!isQuest1) {
+    const profile = profileFor(identity.device);
+    if (!profile) {
+        gates.push({
+            status: "abort",
+            title: "Unsupported device",
+            detail:
+                `This device reports "${identity.device || "unknown"}" ` +
+                `(${identity.model || "unknown model"}). Supported: ` +
+                `${PROFILES.map((p) => `${p.label} (${p.codenames[0]})`).join(", ")}. ` +
+                "The downgrade images and the bootloader patch are specific to each " +
+                "one and would brick other hardware.",
+        });
         return gates;
     }
 
+    gates.push({
+        status: "ok",
+        title: `Device is a ${profile.label}`,
+        detail: `${identity.model} (${identity.device}), Android ${identity.release}`,
+    });
+
+    if (!isSupported(profile)) {
+        gates.push({
+            status: "abort",
+            title: `${profile.label} is not supported yet`,
+            detail:
+                `Recognised, but ${missingPieces(profile).join(" and ")} is still ` +
+                "missing. Downgrading a device this tool cannot then unlock would " +
+                "leave it worse off, so it stops here.",
+        });
+        return gates;
+    }
+
+    // The build index covers the Quest 1 only. Everything after it works off
+    // the incremental alone, so the rest of the gates still apply to any
+    // device — they just cannot name the build.
     if (identity.build) {
         gates.push({
             status: "ok",
             title: `Build ${identity.build.version}`,
             detail: `${identity.incremental}, built ${identity.build.buildDate}`,
         });
-    } else {
+    } else if (profile.id === "quest1") {
         gates.push({
             status: "warn",
             title: "Build not in the firmware archive",
@@ -192,13 +209,41 @@ export function evaluateGates(identity: DeviceIdentity): Gate[] {
                 `${identity.incremental} is not one of the ${BUILDS.length} known Quest 1 ` +
                 "builds, so its position in the release order cannot be checked.",
         });
+    } else {
+        // No build index for this device, which is not something the user can
+        // act on: the checks that matter — the comparison against the
+        // downgrade target below, and the bootloader's own build number at
+        // unlock time — do not need one. Report the build rather than warn.
+        gates.push({
+            status: "ok",
+            title: `Build ${identity.incremental}`,
+            detail: `Android ${identity.release}, ${identity.fingerprint}`,
+        });
+    }
+
+    // A build past the profile's ceiling is refused before anything else is
+    // considered: the exploit does not work there, and the steps that follow
+    // all assume it will.
+    if (profile.maxSupportedBuild !== undefined && identity.incremental) {
+        const ceiling = BigInt(profile.maxSupportedBuild);
+        if (BigInt(identity.incremental) > ceiling) {
+            gates.push({
+                status: "abort",
+                title: "Build is too new for the root exploit",
+                detail:
+                    `This headset is on ${identity.incremental}. The exploit works up to ` +
+                    `${profile.maxSupportedBuild} and no further — it was fixed after ` +
+                    "that, so there is no way in on this build. Nothing here will run.",
+            });
+            return gates;
+        }
     }
 
     // Verified against the archive: numeric order of `incremental` matches
     // build-date order for every known Quest 1 build.
     const current = BigInt(identity.incremental || "0");
-    const target = BigInt(DOWNGRADE_TARGET);
-    const targetBuild = BUILDS.find((b) => b.incremental === DOWNGRADE_TARGET)!;
+    const target = BigInt(profile.downgradeTarget);
+    const targetBuild = BUILDS.find((b) => b.incremental === profile.downgradeTarget);
 
     if (current <= target) {
         gates.push({
@@ -208,7 +253,7 @@ export function evaluateGates(identity: DeviceIdentity): Gate[] {
                 `This device is on ${identity.incremental}` +
                 (current === target
                     ? " — exactly the build this tool downgrades to."
-                    : `, which is older than the downgrade target ${DOWNGRADE_TARGET}.`) +
+                    : `, which is older than the downgrade target ${profile.downgradeTarget}.`) +
                 " There is nothing to downgrade; go straight to the fastboot unlock.",
         });
         return gates;
@@ -217,25 +262,29 @@ export function evaluateGates(identity: DeviceIdentity): Gate[] {
     gates.push({
         status: "ok",
         title: "Newer than the downgrade target",
-        detail: `Will downgrade the inactive slot to ${targetBuild.version} (${DOWNGRADE_TARGET}).`,
+        detail:
+            "Will downgrade the inactive slot to " +
+            (targetBuild ? `${targetBuild.version} (${profile.downgradeTarget}).` : `${profile.downgradeTarget}.`),
     });
 
-    gates.push(
-        ROOT_SUPPORTED.includes(identity.incremental)
-            ? {
-                  status: "ok",
-                  title: "Root exploit confirmed on this build",
-                  detail: `ionstack has been tested against ${identity.incremental}.`,
-              }
-            : {
-                  status: "warn",
-                  title: "Root exploit untested on this build",
-                  detail:
-                      `ionstack is only confirmed on ${ROOT_SUPPORTED.join(", ")}. ` +
-                      "It may simply fail to get root on this build, which is harmless, " +
-                      "but it may also panic the kernel and reboot the headset.",
-              },
-    );
+    if (profile.rootSupported.includes(identity.incremental)) {
+        gates.push({
+            status: "ok",
+            title: "Root exploit confirmed on this build",
+            detail: `ionstack has been tested against ${identity.incremental}.`,
+        });
+    } else {
+        gates.push({
+            status: "warn",
+            title: "Root exploit untested on this build",
+            detail:
+                (profile.rootSupported.length > 0
+                    ? `ionstack is only confirmed on ${profile.rootSupported.join(", ")}. `
+                    : `No ${profile.label} build has been confirmed yet. `) +
+                "It may simply fail to get root on this build, which is harmless, but it " +
+                "may also panic the kernel and reboot the headset.",
+        });
+    }
 
     return gates;
 }

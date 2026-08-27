@@ -6,7 +6,7 @@ import {
 } from "@yume-chan/adb-daemon-webusb";
 
 import { fetchAsset } from "./lib/assets.js";
-import { DEVICE, DOWNGRADE_TARGET, identify } from "./lib/device.js";
+import { identify } from "./lib/device.js";
 import { FastbootDevice, rebootToBootloader } from "./lib/fastboot.js";
 import { Flow, type Confirmation } from "./lib/flow.js";
 import { planRestore, runRestore } from "./lib/restore.js";
@@ -19,7 +19,8 @@ import {
     importBackupZip,
     listBackupSets,
 } from "./lib/storage.js";
-import { PARTITIONS, backupEntryName } from "./lib/partitions.js";
+import { backupEntryName } from "./lib/partitions.js";
+import { PROFILES } from "./data/profiles.js";
 
 const OCULUS_VENDOR_ID = 0x2833;
 
@@ -31,6 +32,9 @@ const connectFastbootButton = $<HTMLButtonElement>("connect-fastboot");
 const disconnectButton = $<HTMLButtonElement>("disconnect");
 const runStepButton = $<HTMLButtonElement>("run-step");
 const retryStepButton = $<HTMLButtonElement>("retry-step");
+const skipStepButton = $<HTMLButtonElement>("skip-step");
+const unlockNowButton = $<HTMLButtonElement>("unlock-now");
+const directUnlockRow = $<HTMLDivElement>("direct-unlock-row");
 const rebootBootloaderButton = $<HTMLButtonElement>("reboot-bootloader");
 const stepHint = $<HTMLSpanElement>("step-hint");
 const statusText = $<HTMLParagraphElement>("status");
@@ -158,6 +162,13 @@ function renderConnection(): void {
 
     disconnectButton.disabled =
         webusbBlocked || busy || !(adbConnected || fastbootConnected);
+
+    // The shortcut is only meaningful while the flow has not reached the
+    // unlock itself: past that point there is nothing left for it to skip.
+    const unlockIndex = flow.steps.findIndex((step) => step.id === "unlock");
+    const currentIndex = flow.current ? flow.steps.indexOf(flow.current) : flow.steps.length;
+    directUnlockRow.hidden = !(fastbootConnected && currentIndex < unlockIndex);
+    unlockNowButton.disabled = busy;
 }
 
 function renderDevice(): void {
@@ -266,6 +277,7 @@ function renderActions(): void {
     if (busy) {
         runStepButton.disabled = true;
         retryStepButton.hidden = true;
+        skipStepButton.hidden = true;
         rebootBootloaderButton.disabled = true;
         stepHint.textContent = "working…";
         return;
@@ -275,6 +287,7 @@ function renderActions(): void {
         runStepButton.disabled = true;
         runStepButton.textContent = "All steps complete";
         retryStepButton.hidden = true;
+        skipStepButton.hidden = true;
         rebootBootloaderButton.hidden = true;
         stepHint.textContent = "";
         return;
@@ -282,6 +295,12 @@ function renderActions(): void {
 
     const failed = step.state === "failed";
     retryStepButton.hidden = !failed;
+    skipStepButton.hidden = !flow.canSkip(step);
+    skipStepButton.disabled = busy;
+    skipStepButton.textContent = `Skip: ${step.title}`;
+    skipStepButton.title =
+        "Leaves this step unrun. It is optional because this run did not " +
+        "downgrade anything.";
 
     // A missed overflow leaves the bootloader in an unknown state, so retrying
     // is only meaningful after a clean boot.
@@ -489,7 +508,7 @@ async function offerBackupCleanup(): Promise<void> {
                 "unlock survives it.",
             `The backup of slot ${target} is still stored in this browser. It is what puts ` +
                 `${target} back to the firmware it held before the downgrade — that slot ` +
-                `still holds ${DOWNGRADE_TARGET} until you restore it.`,
+                `still holds ${flow.profile.downgradeTarget} until you restore it.`,
             "Delete it only if you are content to leave the downgraded slot as it is. " +
                 "Saving it as a zip first costs nothing.",
         ],
@@ -1111,6 +1130,25 @@ runStepButton.addEventListener("click", () => {
     void withBusy(runCurrentStep);
 });
 
+unlockNowButton.addEventListener("click", () => {
+    void withBusy(async () => {
+        await flow.startDirectUnlock();
+        setStatus(
+            `Ready to unlock this ${flow.profile.label} — the downgrade steps were skipped.`,
+            "warn",
+        );
+    });
+});
+
+skipStepButton.addEventListener("click", () => {
+    const step = flow.current;
+    if (!step) return;
+    flow.skipCurrent();
+    log(`${step.title}: skipped`, "warn");
+    setStatus(`${step.title} — skipped.`, "idle");
+    render();
+});
+
 retryStepButton.addEventListener("click", () => {
     const step = flow.current;
     if (!step) return;
@@ -1144,7 +1182,9 @@ importFilesInput.addEventListener("change", () => {
                   ...(await importBackupSet(files, {
                       serial,
                       fingerprint,
-                      expected: PARTITIONS.map((name) => backupEntryName(name, slot)),
+                      expected: flow.profile.partitions.map((name) =>
+                          backupEntryName(name, slot),
+                      ),
                       createdAt,
                   })),
                   corrupt: [] as string[],
@@ -1224,7 +1264,8 @@ void (async () => {
     }
 
     setStatus(
-        `Ready — plug in the ${DEVICE.model} and click “Connect headset”.`,
+        `Ready — plug in the headset (${PROFILES.map((p) => p.label).join(" or ")}) ` +
+            "and click “Connect headset”.",
         "idle",
     );
 

@@ -10,9 +10,9 @@
 import type { Adb } from "@yume-chan/adb";
 
 import { type DeviceProfile, profileFor } from "../data/profiles.js";
+import { expectedHash } from "./assets.js";
 import { identify, sha256, shell } from "./device.js";
 import {
-    PARTITIONS,
     type AnyPartition,
     findByNameDir,
     restorePartition,
@@ -62,6 +62,25 @@ export async function planRestore(adb: Adb, id: string): Promise<RestorePlan> {
         throw new Error(
             `no ionstack build is known for "${identity.device}", so this device cannot ` +
                 "be rooted to perform the restore.",
+        );
+    }
+    if (Object.keys(profile.ionstackEnv).length === 0 || !expectedHash(profile.ionstack)) {
+        throw new Error(
+            `this build has no working ionstack for the ${profile.label}, so it cannot be ` +
+                "rooted and the backup cannot be written back.",
+        );
+    }
+    // The gates guard the unlock flow; this path reaches ionstack on its own,
+    // so it has to refuse a too-new build itself.
+    if (
+        profile.maxSupportedBuild !== undefined &&
+        identity.incremental &&
+        BigInt(identity.incremental) > BigInt(profile.maxSupportedBuild)
+    ) {
+        throw new Error(
+            `this headset is on ${identity.incremental}, past the last build the exploit ` +
+                `works on (${profile.maxSupportedBuild}). It cannot be rooted, so the ` +
+                "backup cannot be written back from here.",
         );
     }
 
@@ -145,9 +164,10 @@ export async function runRestore(
 
     // Restore in the archive's flash order so the bootloader chain lands in a
     // consistent order, and skip nothing: a partial restore is the worst state.
+    const flashOrder = plan.profile.partitions;
     const order = (name: AnyPartition) => {
-        const index = (PARTITIONS as readonly string[]).indexOf(name);
-        return index < 0 ? PARTITIONS.length : index;
+        const index = flashOrder.indexOf(name);
+        return index < 0 ? flashOrder.length : index;
     };
     const ordered = [...items].sort((a, b) => order(a.partition) - order(b.partition));
 

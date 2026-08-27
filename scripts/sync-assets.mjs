@@ -12,10 +12,24 @@
 //      reach the headset. The manifest is deliberately not fetched at runtime;
 //      if it were, an attacker able to swap a payload could swap it too.
 import { createHash } from "node:crypto";
-import { copyFile, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-const ASSETS = ["16476800119700000.zip", "ionstack", "bootctl_shim"];
+// Per-device payloads live under their device's folder; bootctl_shim is the
+// same binary on every one of them. A payload that is not in this checkout is
+// still pinned and still refused if it turns up changed — see below.
+const ASSETS = [
+    "bootctl_shim",
+    "quest1/16476800119700000.zip",
+    "quest1/ionstack",
+    // Quest 2. Neither is in the repo yet; the app refuses the device until
+    // they are, and these pins are what they will be checked against.
+    "quest2a12/16476800118700000.zip",
+    "quest2a12/ionstack",
+];
+
+/** Payloads that may be absent: the app reports the device as unsupported. */
+const OPTIONAL = new Set(["quest2a12/16476800118700000.zip", "quest2a12/ionstack"]);
 const EXPECTED_FILE = join("binaries", "EXPECTED.sha256");
 const MANIFEST_FILE = join("src", "data", "asset-hashes.json");
 
@@ -88,6 +102,9 @@ for (const name of ASSETS) {
 
     const want = expected.get(name);
     if (!want) {
+        if (OPTIONAL.has(name)) {
+            continue;
+        }
         console.error(`${name} has no entry in ${EXPECTED_FILE}; refusing to serve it`);
         failed = true;
         continue;
@@ -97,6 +114,10 @@ for (const name of ASSETS) {
 
     const source = await stat(from).catch(() => undefined);
     if (!source) {
+        if (OPTIONAL.has(name)) {
+            console.warn(`${from} is absent — that device stays unsupported`);
+            continue;
+        }
         console.error(`missing ${from} — the app cannot run without it`);
         failed = true;
         continue;
@@ -126,9 +147,6 @@ if (failed) {
     console.error("\nasset check failed — nothing was published to public/");
     process.exit(1);
 }
-
-// Left over from when a dev-only payload was published alongside the rest.
-await rm(join("public", "binaries", "dev"), { recursive: true, force: true });
 
 await writeFile(
     MANIFEST_FILE,

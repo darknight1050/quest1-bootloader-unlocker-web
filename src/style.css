@@ -428,6 +428,23 @@ code {
   color: var(--warn);
 }
 
+.step-skipped {
+  opacity: 0.55;
+}
+
+.step-skipped::before {
+  content: "–";
+  border-style: dashed;
+}
+
+.direct-unlock {
+  margin-top: 0.7rem;
+}
+
+.direct-unlock .hint {
+  flex: 1 1 12rem;
+}
+
 .step-current {
   border-color: var(--accent);
 }

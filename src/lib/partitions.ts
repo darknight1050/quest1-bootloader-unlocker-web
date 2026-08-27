@@ -19,27 +19,14 @@ import {
 } from "./device.js";
 import type { BackupSet } from "./storage.js";
 
-/** Partition images carried in the downgrade archive, in flash order. */
-export const PARTITIONS = [
-    "xbl",
-    "abl",
-    "rpm",
-    "tz",
-    "hyp",
-    "devcfg",
-    "pmic",
-    "cmnlib",
-    "cmnlib64",
-    "keymaster",
-    "ovrtz",
-    "modem",
-    "boot",
-] as const;
-
-export type PartitionName = (typeof PARTITIONS)[number];
-
-/** Imported backups may hold partitions outside the Quest 1 set. */
-export type AnyPartition = PartitionName | (string & {});
+/**
+ * A partition name.
+ *
+ * Which names matter is a property of the device, not of this module: each
+ * profile carries its own list in flash order. Imported backups can hold
+ * anything the device that made them exposed, so nothing here narrows it.
+ */
+export type AnyPartition = string;
 
 /** Usual Quest 1 layout; confirmed at runtime by `findByNameDir`. */
 export const BY_NAME = "/dev/block/bootdevice/by-name";
@@ -108,10 +95,11 @@ export async function partitionSize(
 export async function checkPartitions(
     adb: Adb,
     slotSuffix: string,
-): Promise<Map<PartitionName, number>> {
-    const sizes = new Map<PartitionName, number>();
+    partitions: readonly string[],
+): Promise<Map<string, number>> {
+    const sizes = new Map<string, number>();
     const missing: string[] = [];
-    for (const partition of PARTITIONS) {
+    for (const partition of partitions) {
         try {
             sizes.set(partition, await partitionSize(adb, partition, slotSuffix));
         } catch {

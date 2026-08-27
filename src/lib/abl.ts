@@ -81,6 +81,23 @@ export const PATCH_16476800119700000: AblPatch = [
     },
 ];
 
+/**
+ * Build 16476800118700000 (Quest 2, `hollywood`) — the same bypass.
+ *
+ * A different image, but the identical instruction at a different address:
+ * `c9 04 00 54` is again `b.ls +0x98` past the verification failure path, and
+ * `b6 00 00 14` is again `b +0x2d8`, made unconditional. Both images were
+ * built from the same source a day apart, which is why the two edits differ
+ * only in where they land.
+ */
+export const PATCH_16476800118700000: AblPatch = [
+    {
+        offset: 0x3f1a0,
+        expect: [0xc9, 0x04, 0x00, 0x54],
+        replace: [0xb6, 0x00, 0x00, 0x14],
+    },
+];
+
 /** The patch the unlock applies. */
 export function unlockPatch(): AblPatch {
     return PATCH_16476800119700000;
