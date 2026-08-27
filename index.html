@@ -46,6 +46,19 @@
                 Disconnect
               </button>
             </div>
+            <p id="windows-note" class="note" hidden>
+              <strong>Windows:</strong> the headset needs a driver for its ADB
+              interface and another for its bootloader — they are separate USB
+              devices. Install
+              <a
+                href="https://developers.meta.com/horizon/downloads/package/oculus-adb-drivers/"
+                target="_blank"
+                rel="noopener noreferrer"
+                >Meta's ADB drivers</a
+              >
+              before connecting. If the bootloader still does not appear in the
+              picker later, bind that interface to WinUSB with Zadig.
+            </p>
             <div class="row direct-unlock" id="direct-unlock-row" hidden>
               <button id="unlock-now" type="button" class="ghost">
                 Unlock this bootloader
@@ -135,9 +148,15 @@
       <footer>
         <p>
           Chromium browser over <code>https</code> or <code>localhost</code>.
-          Developer Mode on, <code>adb kill-server</code> run, and on Windows the
-          ADB and fastboot interfaces both bound to WinUSB. Unlocking the
-          bootloader makes the headset wipe user data on its next boot.
+          Developer Mode on, <code>adb kill-server</code> run, and on Windows
+          drivers for both the ADB and the fastboot interface —
+          <a
+            href="https://developers.meta.com/horizon/downloads/package/oculus-adb-drivers/"
+            target="_blank"
+            rel="noopener noreferrer"
+            >Meta's driver package</a
+          >, or WinUSB via Zadig. Unlocking the bootloader makes the headset
+          wipe user data on its next boot.
         </p>
       </footer>
     </main>

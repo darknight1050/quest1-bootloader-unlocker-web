@@ -139,6 +139,11 @@ header {
   gap: 1rem;
 }
 
+footer a,
+#notice-body a {
+  color: var(--accent);
+}
+
 .repo-link {
   display: inline-flex;
   align-items: center;
@@ -612,6 +617,24 @@ pre#log {
 .backup-actions button {
   font-size: 0.8rem;
   padding: 0.35rem 0.65rem;
+}
+
+.note {
+  margin: 0.7rem 0 0;
+  padding: 0.6rem 0.75rem;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.note strong {
+  color: var(--fg);
+}
+
+.note a {
+  color: var(--accent);
 }
 
 .unsupported {

@@ -285,9 +285,12 @@ that a wrong build is rejected.
 - Secure context: `localhost` or `https`.
 - Developer Mode on; accept the RSA prompt in VR on first connect.
 - `adb kill-server`, and close SideQuest — nothing else may hold the interface.
-- **Windows:** both the ADB *and* the fastboot interfaces must be bound to
-  WinUSB via [Zadig](https://zadig.akeo.ie/). They are separate USB devices with
-  separate permissions, so the fastboot device needs its own picker grant.
+- **Windows:** the ADB *and* the fastboot interfaces each need a driver. Start
+  with Meta's
+  [Oculus ADB Drivers](https://developers.meta.com/horizon/downloads/package/oculus-adb-drivers/);
+  if the bootloader still does not appear in the picker, bind that interface to
+  WinUSB with [Zadig](https://zadig.akeo.ie/). They are separate USB devices
+  with separate permissions, so the fastboot device needs its own picker grant.
 - ~70 MB free in `/data/local/tmp` and ~70 MB of browser storage quota.
 
 ## Layout

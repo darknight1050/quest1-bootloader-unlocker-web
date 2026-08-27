@@ -48,6 +48,7 @@ const backupsBox = $<HTMLDivElement>("backups");
 const logElement = $<HTMLPreElement>("log");
 const copyLogButton = $<HTMLButtonElement>("copy-log");
 const unsupportedBox = $<HTMLDivElement>("unsupported");
+const windowsNote = $<HTMLParagraphElement>("windows-note");
 const importBackupButton = $<HTMLButtonElement>("import-backup");
 const importFilesInput = $<HTMLInputElement>("import-files");
 
@@ -756,6 +757,21 @@ function showNotice(
         noticeBody.replaceChildren();
         for (const paragraph of body) {
             const p = document.createElement("p");
+            // A bare URL in the text becomes a real link: these dialogs point
+            // at driver downloads, and a URL nobody can click is no help.
+            const url = /https?:\/\/\S+/.exec(paragraph);
+            if (url) {
+                const [before, after] = paragraph.split(url[0]);
+                p.append(before ?? "");
+                const anchor = document.createElement("a");
+                anchor.href = url[0];
+                anchor.textContent = url[0];
+                anchor.target = "_blank";
+                anchor.rel = "noopener noreferrer";
+                p.append(anchor, after ?? "");
+                noticeBody.append(p);
+                continue;
+            }
             p.textContent = paragraph;
             noticeBody.append(p);
         }
@@ -1072,9 +1088,13 @@ async function offerFastbootPicker(intro: string): Promise<void> {
             "The bootloader is a different USB device (product id 0x81) from the ADB " +
                 "one, and it comes back as a new device every time it restarts, so the " +
                 "permission you granted before may no longer cover it.",
-            "Wait for the boot logo to settle, then pick the device. On Windows that " +
-                "interface must also be bound to WinUSB, separately from the ADB one.",
-            "If no device appears, unplug and replug the cable and try again.",
+            "Wait for the boot logo to settle, then pick the device.",
+            "On Windows it needs a driver of its own, separate from the ADB one. " +
+                "Meta's package is at " +
+                "https://developers.meta.com/horizon/downloads/package/oculus-adb-drivers/ " +
+                "— install it, replug, and try again. If the bootloader still does not " +
+                "appear in the picker, bind that interface to WinUSB with Zadig.",
+            "If no device appears at all, unplug and replug the cable and try again.",
         ],
         { label: "Choose the fastboot device", run: connectFastboot },
     );
@@ -1247,6 +1267,13 @@ copyLogButton.addEventListener("click", () => {
 // --------------------------------------------------------------- start-up
 
 void (async () => {
+    // Drivers are a Windows-only problem, and one worth saying before the
+    // first connect rather than after it has already failed.
+    const platform =
+        (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform ??
+        navigator.userAgent;
+    windowsNote.hidden = !/win/i.test(platform);
+
     render();
     await renderBackups();
 
