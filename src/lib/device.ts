@@ -279,10 +279,11 @@ export function evaluateGates(identity: DeviceIdentity): Gate[] {
             title: "Root exploit untested on this build",
             detail:
                 (profile.rootSupported.length > 0
-                    ? `ionstack is only confirmed on ${profile.rootSupported.join(", ")}. `
+                    ? `${identity.incremental} is not one of the ${profile.rootSupported.length} ` +
+                      "builds ionstack is confirmed on. "
                     : `No ${profile.label} build has been confirmed yet. `) +
-                "It may simply fail to get root on this build, which is harmless, but it " +
-                "may also panic the kernel and reboot the headset.",
+                "It may simply fail to get root, which is harmless, but it may also panic " +
+                "the kernel and reboot the headset.",
         });
     }
 
