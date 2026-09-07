@@ -1088,7 +1088,9 @@ async function offerFastbootPicker(intro: string): Promise<void> {
             "The bootloader is a different USB device (product id 0x81) from the ADB " +
                 "one, and it comes back as a new device every time it restarts, so the " +
                 "permission you granted before may no longer cover it.",
-            "Wait for the boot logo to settle, then pick the device.",
+            "The headset is in the bootloader once its screen reads “USB Update " +
+                "Mode” — that text is what fastboot looks like on a Quest, not the " +
+                "boot logo. Wait for it, then pick the device.",
             "On Windows it needs a driver of its own, separate from the ADB one. " +
                 "Meta's package is at " +
                 "https://developers.meta.com/horizon/downloads/package/oculus-adb-drivers/ " +
@@ -1128,8 +1130,11 @@ async function runCurrentStep(): Promise<void> {
             await offerBackupCleanup();
         }
         if (step.id === "bootloader") {
-            setStatus("Headset is rebooting into fastboot.", "warn");
-            await offerFastbootPicker("The headset is rebooting into its bootloader.");
+            setStatus("Headset is rebooting into fastboot (“USB Update Mode”).", "warn");
+            await offerFastbootPicker(
+                "The headset is rebooting into its bootloader — its screen shows " +
+                    "“USB Update Mode” when it gets there.",
+            );
         }
     } else {
         setStatus(`${step.title} — failed. See the log.`, "error");

@@ -167,7 +167,9 @@ function unlockSteps(): Step[] {
         {
             id: "bootloader",
             title: "Reboot into fastboot",
-            detail: "Restart the headset into its bootloader.",
+            detail:
+                "Restart the headset into its bootloader — the headset screen shows " +
+                "“USB Update Mode” once it is there.",
             state: "pending",
         },
         {
@@ -1050,7 +1052,8 @@ export class Flow {
         await adb.power.bootloader().catch(() => shell(adb, "reboot bootloader"));
         this.adb = undefined;
         this.#log(
-            "headset is rebooting — connect to the fastboot device when the picker appears",
+            "headset is rebooting — it is in the bootloader once the screen reads " +
+                "“USB Update Mode”; connect to the fastboot device when the picker appears",
             "warn",
         );
     }

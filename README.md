@@ -36,7 +36,7 @@ npm run pin-pe-hash  # re-pin the extracted bootloader hash in flow.ts
 | 5 | Back up all 13 partitions the flash step overwrites into OPFS, then re-read and re-hash every one against the device | root |
 | 6 | Write the 13 downgrade images, verifying each | root, **typed confirmation** |
 | 7 | Point bootctl at the downgraded slot | root |
-| 8 | Reboot into fastboot | adb |
+| 8 | Reboot into fastboot — the headset screen reads "USB Update Mode" there | adb |
 | 9 | Check build number, send the payload, request the unlock token | fastboot, **typed confirmation** |
 | 10 | Re-confirm unlock, `set_active` the original slot, restart the bootloader and read the switch back | fastboot |
 | 11 | Erase userdata so the downgraded slot boots clean | fastboot |
@@ -127,6 +127,12 @@ not meaningful.
 runs from userspace and never executes the vulnerable `abl` path.
 
 A manual **Reboot bootloader** button is also available on every fastboot step.
+
+The headset gives no other sign that it is in fastboot: the bootloader draws
+**"USB Update Mode"** on the headset screen and nothing else. That text, not the
+boot logo, is the cue that the fastboot device is up and can be picked. It is
+also a separate USB device from ADB, so it needs the **Connect bootloader**
+button and its own picker grant.
 
 ### Gates
 
