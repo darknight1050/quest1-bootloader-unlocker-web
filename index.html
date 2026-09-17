@@ -12,8 +12,10 @@
         <div>
           <h1>Quest Bootloader Unlocker</h1>
           <p class="sub">
-            Downgrades the inactive slot to a build with a vulnerable bootloader,
-            boots it, and unlocks through CVE-2021-1931.
+            Rolls the <em>inactive</em> slot's bootloader chain back to a build with
+            a vulnerable <code>abl</code>, boots it, and unlocks through
+            CVE-2021-1931. Only the boot-chain partitions are written — never
+            <code>system</code>, <code>vendor</code> or your data.
             Quest&nbsp;1 and Quest&nbsp;2.
           </p>
         </div>

@@ -1069,7 +1069,13 @@ function runRevert(): void {
 }
 
 /** Steps that talk to the bootloader rather than to a running system. */
-const FASTBOOT_STEPS = ["unlock", "restore-slot", "factory-reset", "boot-os"];
+const FASTBOOT_STEPS = [
+    "unlock",
+    "restore-slot",
+    "restore-target",
+    "factory-reset",
+    "boot-os",
+];
 
 /**
  * Hands the user the USB picker for the bootloader.

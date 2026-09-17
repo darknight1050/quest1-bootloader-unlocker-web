@@ -325,6 +325,95 @@ export class FastbootDevice {
         return info;
     }
 
+    /**
+     * Reads packets until OKAY, FAIL or the DATA the host is asked to send.
+     *
+     * DATA is the bootloader saying "go ahead, here is how many bytes I will
+     * take" — a third terminator that {@link readResponse} has no reason to
+     * know about, since only a download is ever told it.
+     */
+    async #readUntilData(onInfo?: (line: string) => void): Promise<number | FastbootResponse> {
+        for (;;) {
+            const packet = await this.#nextPacket();
+            if (packet === "") {
+                continue;
+            }
+            const tag = packet.slice(0, 4);
+            const body = packet.slice(4);
+            if (tag === "DATA") {
+                const size = Number.parseInt(body.trim(), 16);
+                if (!Number.isFinite(size)) {
+                    throw new Error(`the bootloader answered ${packet}, which is not a size`);
+                }
+                return size;
+            }
+            if (tag === "OKAY" || tag === "FAIL") {
+                return { status: tag, message: body, info: [] };
+            }
+            onInfo?.(tag === "INFO" || tag === "TEXT" ? body : packet);
+        }
+    }
+
+    /** Largest image the bootloader will accept in one download. */
+    async maxDownloadSize(): Promise<number | undefined> {
+        const raw = await this.getVar("max-download-size");
+        if (raw === undefined) return undefined;
+        const value = Number.parseInt(raw.trim(), raw.trim().startsWith("0x") ? 16 : 10);
+        return Number.isFinite(value) && value > 0 ? value : undefined;
+    }
+
+    /**
+     * Hands an image to the bootloader, ready to be written somewhere.
+     *
+     * The bootloader states the size it will take, and it has to be the size
+     * offered: a short or over-long transfer desynchronises the stream, and
+     * the next command would read this one's leftovers.
+     */
+    async download(
+        image: Uint8Array,
+        onProgress?: (sent: number, total: number) => void,
+    ): Promise<void> {
+        const { outEndpoint } = this.#require();
+        const header = `download:${image.length.toString(16).padStart(8, "0")}`;
+        await this.#device.transferOut(
+            outEndpoint,
+            bufferSource(new TextEncoder().encode(header)),
+        );
+
+        const accepted = await this.#readUntilData();
+        if (typeof accepted !== "number") {
+            throw new FastbootError(header, accepted);
+        }
+        if (accepted !== image.length) {
+            throw new Error(
+                `the bootloader will take ${accepted} bytes but the image is ${image.length}. ` +
+                    "Nothing was written.",
+            );
+        }
+
+        await this.writeRaw(image, onProgress);
+
+        const done = await this.readResponse();
+        if (done.status === "FAIL") {
+            throw new FastbootError(header, done);
+        }
+    }
+
+    /**
+     * Writes a downloaded image to a partition.
+     *
+     * Only ever reached on an unlocked bootloader; a locked one refuses the
+     * command outright, which comes back as FAIL rather than as damage.
+     */
+    async flash(
+        partition: string,
+        image: Uint8Array,
+        onProgress?: (sent: number, total: number) => void,
+    ): Promise<FastbootResponse> {
+        await this.download(image, onProgress);
+        return this.command(`flash:${partition}`);
+    }
+
     async setActive(slot: "a" | "b"): Promise<FastbootResponse> {
         return this.commandOk(`set_active:${slot}`);
     }

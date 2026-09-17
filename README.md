@@ -2,9 +2,17 @@
 
 **<https://quest1-unlock.skystate.ch/>** — run it there, no install.
 
-Downgrades the inactive boot slot of a Meta Quest 1 to firmware
-`16476800119700000` (v29.0.0.66, 10 May 2021), boots it, and unlocks the
-bootloader through CVE-2021-1931 — all from a browser tab.
+Rolls the *inactive* boot slot's bootloader chain back to a build with a
+vulnerable `abl`, boots it, and unlocks through CVE-2021-1931 — all from a
+browser tab. Quest 1 (`16476800119700000`, v29.0.0.66) and Quest 2
+(`16476800118700000`), each with its own archive, patch and ionstack build.
+
+**It is not an OS downgrade.** Only the boot chain is written — xbl, abl, tz,
+hyp and the rest, plus the kernel and modem that have to match it. `system`,
+`vendor`, `super` and your data are never touched, and the slot you are
+running is never written to. Once the unlock is done the tool flashes the
+backup back over that slot, so the headset ends up on the firmware it started
+with, unlocked.
 
 Reimplements [darknight1050/quest-bootloader-unlocker][ref] for the single
 build we downgrade to.
@@ -34,13 +42,14 @@ npm run pin-pe-hash  # re-pin the extracted bootloader hash in flow.ts
 | 3 | Read the boot slots | adb |
 | 4 | Get root via ionstack | adb, **typed confirmation** |
 | 5 | Back up all 13 partitions the flash step overwrites into OPFS, then re-read and re-hash every one against the device | root |
-| 6 | Write the 13 downgrade images, verifying each | root, **typed confirmation** |
+| 6 | Write the older boot-chain images, verifying each | root, **typed confirmation** |
 | 7 | Point bootctl at the downgraded slot | root |
 | 8 | Reboot into fastboot — the headset screen reads "USB Update Mode" there | adb |
 | 9 | Check build number, send the payload, request the unlock token | fastboot, **typed confirmation** |
 | 10 | Re-confirm unlock, `set_active` the original slot, restart the bootloader and read the switch back | fastboot |
-| 11 | Erase userdata so the downgraded slot boots clean | fastboot |
-| 12 | Reboot out of fastboot so Android marks the slot successful | fastboot |
+| 11 | Flash the backup back over the rolled-back slot | fastboot |
+| 12 | Erase userdata so the slot boots clean | fastboot |
+| 13 | Reboot out of fastboot so Android marks the slot successful | fastboot |
 
 The backup covers exactly the partitions the flash step overwrites — the 13 in
 the archive, no more and no less. Nothing is ever skipped: `checkPartitions`

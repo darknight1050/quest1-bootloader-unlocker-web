@@ -135,7 +135,7 @@ function unlockSteps(): Step[] {
         {
             id: "slots",
             title: "Read the boot slots",
-            detail: "Determine the active slot and the one we will downgrade.",
+            detail: "Determine the active slot and the one whose bootloader we roll back.",
             state: "pending",
         },
         {
@@ -154,14 +154,16 @@ function unlockSteps(): Step[] {
         },
         {
             id: "flash",
-            title: "Downgrade the inactive slot",
-            detail: "Write the downgrade images and verify every partition by hash.",
+            title: "Roll back the inactive slot's boot chain",
+            detail:
+                "Write the older boot-chain images — no system, vendor or data — and " +
+                "verify every partition by hash.",
             state: "pending",
         },
         {
             id: "activate",
             title: "Switch the active slot",
-            detail: "Point bootctl at the downgraded slot so it boots next.",
+            detail: "Point bootctl at that slot so its old bootloader runs next.",
             state: "pending",
         },
         {
@@ -187,6 +189,14 @@ function unlockSteps(): Step[] {
             state: "pending",
         },
         {
+            id: "restore-target",
+            title: "Put the rolled-back slot back",
+            detail:
+                "Flash the backup over the slot we rolled back, so no half-old boot " +
+                "chain is left on the headset.",
+            state: "pending",
+        },
+        {
             id: "factory-reset",
             title: "Factory reset",
             detail: "Erase userdata so the downgraded slot comes up clean.",
@@ -209,7 +219,11 @@ function unlockSteps(): Step[] {
  * was already on the vulnerable build may not want its data erased. In the
  * full flow they stay mandatory.
  */
-const OPTIONAL_AFTER_DIRECT_UNLOCK = ["restore-slot", "factory-reset"];
+const OPTIONAL_AFTER_DIRECT_UNLOCK = [
+    "restore-slot",
+    "restore-target",
+    "factory-reset",
+];
 
 export class Flow {
     readonly steps: Step[];
@@ -285,10 +299,13 @@ export class Flow {
                 return {
                     heading: `Overwriting slot ${target} — risk of bricking`,
                     body: [
-                        `This writes ${this.profile.partitions.length} partitions, including the bootloader ` +
-                            `chain (xbl, abl, tz, hyp), to slot ${target}. If it is interrupted ` +
-                            "part-way — cable pulled, headset sleeps, browser tab closed — that " +
-                            "slot will not boot.",
+                        `This writes ${this.profile.partitions.length} partitions to slot ${target}: the ` +
+                            "bootloader chain (xbl, abl, tz, hyp and the rest) plus the kernel " +
+                            "and modem that have to match it. It is not an OS downgrade — " +
+                            "system, vendor and your data are not touched, and the slot you " +
+                            "are running stays exactly as it is.",
+                        "If it is interrupted part-way — cable pulled, headset sleeps, " +
+                            `browser tab closed — slot ${target} will not boot.`,
                         `You stay booted on slot ${original} throughout, so the backup taken ` +
                             "and re-verified in the previous steps can put this slot back " +
                             "whatever happens here. It lives in this browser's storage for " +
@@ -449,6 +466,8 @@ export class Flow {
                 return this.#stepUnlock(step);
             case "restore-slot":
                 return this.#stepRestoreSlot();
+            case "restore-target":
+                return this.#stepRestoreTarget(step);
             case "factory-reset":
                 return this.#stepFactoryReset();
             case "boot-os":
@@ -1351,6 +1370,130 @@ export class Flow {
                 "headset, which is what sets that flag again: Android calls " +
                 "markBootSuccessful once it is up. Until then the bootloader can still " +
                 "fall back to the other slot.",
+            "warn",
+        );
+    }
+
+    /**
+     * Writes the backup back over the slot we rolled back.
+     *
+     * The unlock is done and the headset is running the untouched slot again,
+     * which leaves one loose end: the other slot still holds a years-old boot
+     * chain. This puts it back, so the device ends the procedure with two
+     * slots on the firmware it arrived with.
+     *
+     * Over fastboot rather than adb, and on purpose: the unlock wipes the
+     * device, so the next boot lands at a setup screen with no Developer Mode
+     * and no adb authorisation. The bootloader in front of us is unlocked and
+     * will take `flash` right now; an hour of setup would have to happen
+     * first to get a shell.
+     */
+    async #stepRestoreTarget(step: Step): Promise<void> {
+        const device = this.fastboot;
+        if (!device?.opened) {
+            throw new Error("connect to the fastboot device first");
+        }
+
+        const set = this.backup;
+        if (!set) {
+            throw new Error(
+                "this run has no backup in hand, so there is nothing to put back. If the " +
+                    "slot was rolled back in an earlier session, restore it from the " +
+                    "Restore a backup panel once the headset is set up again. Skip this step.",
+            );
+        }
+        if (this.targetSlot === undefined) {
+            throw new Error("this run did not roll back a slot, so there is none to put back");
+        }
+        const target = slotSuffix(this.targetSlot);
+
+        const state = await readUnlockState(device);
+        if (state.linkLost) {
+            throw new Error(
+                "the bootloader stopped answering, so nothing was written. Reconnect " +
+                    "with “Connect bootloader” and run this step again.",
+            );
+        }
+        if (!state.unlocked) {
+            throw new Error(
+                "the bootloader reports itself locked, and a locked bootloader refuses " +
+                    "flash. Nothing was written.",
+            );
+        }
+
+        // A partition larger than the download buffer would need to be sent as
+        // a sparse image, which this does not build. Better to say so than to
+        // send a truncated boot chain.
+        const limit = await device.maxDownloadSize();
+        this.#log(
+            limit === undefined
+                ? "the bootloader does not report max-download-size; sending images whole"
+                : `max-download-size ${limit} bytes (${(limit / 1048576).toFixed(0)} MiB)`,
+        );
+
+        const entries = this.profile.partitions.map((partition) => ({
+            partition,
+            name: backupEntryName(partition, target),
+        }));
+        for (const { name } of entries) {
+            const entry = set.meta.entries.find((e) => e.name === name);
+            if (!entry) {
+                throw new Error(`the backup has no ${name}, so the slot cannot be put back`);
+            }
+            if (limit !== undefined && entry.size > limit) {
+                throw new Error(
+                    `${name} is ${entry.size} bytes, more than the bootloader will take in ` +
+                        `one download (${limit}). Restore this slot over adb instead, from ` +
+                        "the Restore a backup panel.",
+                );
+            }
+        }
+
+        this.#log(
+            `writing ${entries.length} images back to slot ${target} over fastboot`,
+            "warn",
+        );
+
+        let done = 0;
+        for (const { partition, name } of entries) {
+            const image = await set.read(name);
+            const hash = await sha256(image);
+
+            this.#progress(
+                step,
+                `flashing ${partition}${target} (${done + 1}/${entries.length})`,
+                0,
+                image.length,
+            );
+            const response = await device.flash(`${partition}${target}`, image, (sent, total) => {
+                this.#progress(
+                    step,
+                    `flashing ${partition}${target} (${done + 1}/${entries.length})`,
+                    sent,
+                    total,
+                );
+            });
+
+            if (response.status === "FAIL") {
+                throw new Error(
+                    `flash:${partition}${target} failed: ${response.message}. Slot ${target} is ` +
+                        "now part-way back; run this step again. The slot you are booting " +
+                        "was not touched.",
+                );
+            }
+            done++;
+            this.#log(`  ${partition}${target}  ${image.length} bytes  ${hash}`, "good");
+        }
+
+        this.#log(
+            `slot ${target} is back to the firmware it held before the roll-back`,
+            "good",
+        );
+        this.#log(
+            "fastboot has no way to read a partition back, so these writes were not " +
+                "re-hashed from the device the way the roll-back was. The backup is still " +
+                "in this browser; the Restore a backup panel can verify the slot over adb " +
+                "once the headset is set up again.",
             "warn",
         );
     }
